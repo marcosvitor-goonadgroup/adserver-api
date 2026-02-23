@@ -1,6 +1,6 @@
 require('dotenv').config();
 const express = require('express');
-const { proxy } = require('../src/proxy');
+const { proxy, adserver } = require('../src/proxy');
 
 const app = express();
 app.use(express.json());
@@ -76,6 +76,72 @@ app.get('/transactions/:id', (req, res) => proxy(req, res, { path: `/transaction
 
 // ── Dictionaries ─────────────────────────────────────────────────────────────
 app.get('/dict', (req, res) => proxy(req, res, { path: '/dict' }));
+
+// ── Campaign report (day × site × ad) ────────────────────────────────────────
+// GET /campaigns/:id/report?dateBegin=2026-01-01&dateEnd=2026-01-31
+app.get('/campaigns/:id/report', async (req, res) => {
+  const { id } = req.params;
+  const { dateBegin, dateEnd } = req.query;
+
+  if (!dateBegin || !dateEnd) {
+    return res.status(400).json({ error: 'dateBegin and dateEnd are required' });
+  }
+
+  const base = { dateBegin, dateEnd, idcampaign: id };
+
+  try {
+    const [bySite, byAd] = await Promise.all([
+      adserver.get('/stats', { params: { ...base, group: 'day', group2: 'site' } }),
+      adserver.get('/stats', { params: { ...base, group: 'day', group2: 'ad'  } }),
+    ]);
+
+    // Index ad stats by "date|adId" for O(1) lookup
+    const adMap = {};
+    for (const row of byAd.data) {
+      adMap[`${row.dimension}|${row.iddimension2}`] = row;
+    }
+
+    // Build result: one entry per day+site with nested ads array
+    const daysSites = {};
+    for (const row of bySite.data) {
+      const key = `${row.dimension}|${row.iddimension}`;
+      daysSites[key] = {
+        date:           row.dimension,
+        site_id:        row.iddimension,
+        site_name:      row.dimension2 ?? null,
+        impressions:    row.impressions,
+        clicks:         row.clicks,
+        conversions:    row.conversions,
+        amount:         row.amount,
+        amount_pub:     row.amount_pub,
+        ads:            [],
+      };
+    }
+
+    for (const row of byAd.data) {
+      const adEntry = {
+        date:        row.dimension,
+        ad_id:       row.iddimension2,
+        ad_name:     row.dimension2 ?? null,
+        impressions: row.impressions,
+        clicks:      row.clicks,
+        conversions: row.conversions,
+        amount:      row.amount,
+      };
+      // Attach to matching day+site entry (site is unknown at ad level — attach to all sites that day)
+      for (const key of Object.keys(daysSites)) {
+        if (key.startsWith(`${row.dimension}|`)) {
+          daysSites[key].ads.push(adEntry);
+        }
+      }
+    }
+
+    res.json(Object.values(daysSites));
+  } catch (err) {
+    if (err.response) return res.status(err.response.status).json(err.response.data);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ── Viewability ──────────────────────────────────────────────────────────────
 app.use((req, res, next) => {

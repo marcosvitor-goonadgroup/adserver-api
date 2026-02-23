@@ -51,4 +51,4 @@ async function proxy(req, res, { method, path, params = {}, body } = {}) {
   }
 }
 
-module.exports = { proxy };
+module.exports = { proxy, adserver };
