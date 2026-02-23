@@ -1,0 +1,4109 @@
+openapi: 3.0.0
+info:
+  description: |
+    # Introduction
+    Welcome to the Adserver.Online REST API reference guide.
+
+    This API allows programmatic access to retrieve statistics, manage campaigns, users, ads, sites, zones, and more.
+    It follows the [REST](https://en.wikipedia.org/wiki/REST_API) architecture and utilizes standard HTTP and JSON, making it straightforward to integrate with your systems.
+
+    We recommend using [Postman](https://www.getpostman.com/) to explore and test the API.
+    Download (button above) and import the YAML file into Postman to get started.
+
+    You can also generate client libraries for various programming languages using [Swagger Editor](https://editor.swagger.io/).
+
+    For SDKs and examples, visit our [GitHub repository](https://github.com/adserver-online).
+
+    # Method groups
+
+    In this specification, you can find 3 groups of methods: for owner, for publisher, and for advertiser.
+
+    Using owner methods, you can access to most system components and to all users data. You must use API key created in owner panel.
+
+    Publisher and advertiser methods provide access to role-specific components and to data for a single user only. You must use API key created in publisher or advertiser panels.
+
+    Note: You **can't use owner's API key** to access publisher (/publish/\*) or advertiser (/advert/\*) endpoints.
+
+    However, an owner can impersonate another user and perform API actions on their behalf. To do that, you have to add GET-parameter _asUser_ to an endpoint.
+    For example, /publish/site/123?asUser=456, where 456 is publisher's ID.
+
+    # Rate limiting
+    To prevent abuse, we use rate limiting. The limit for all methods is **100 requests per 1 minute per API token**.
+
+    Every response will be sent with the following HTTP headers containing the current rate limiting information:
+
+    * X-Rate-Limit-Limit &mdash; maximum number of requests allowed with a time period
+    * X-Rate-Limit-Remaining &mdash; number of remaining requests in the current time period
+    * X-Rate-Limit-Reset &mdash; number of seconds to wait in order to get the maximum number of allowed requests
+
+    # Pagination
+
+    Responses that return a list of items (e.g., /site) will be sent with the following HTTP headers to help you create pagination:
+
+    * X-Pagination-Total-Count &mdash; total number of items on all pages
+    * X-Pagination-Page-Count &mdash; number of pages
+    * X-Pagination-Current-Page &mdash; current page number
+    * X-Pagination-Per-Page &mdash; number of items per page
+
+    # Requesting from a browser
+
+    Direct requests from a browser are impossible.
+    This API is intended to be called from a server because it lacks CORS support and other security features required for in-browser use.
+
+    Remember: Keep your access tokens confidential and never reveal them in a browser.
+
+    If you need to call the API from a browser, you must proxy the requests through your server. You can find an example on our [GitHub](https://github.com/adserver-online).
+
+    # Changes log
+    Versions:
+    * **2.0.2** / 2019-08-14: added new methods /events, /publish/zone, /publish/site. Added description and example for timetargeting field in the method /campaign
+    * **2.0.3** / 2019-11-04: added new method /publish/stats/custom-rtb
+    * **2.0.4** / 2020-05-15: added separate request objects for advertiser and publisher related methods
+    * **2.0.5** / 2020-06-25: ads create/update methods support uploading files in base64 encoded format
+    * **2.0.6** / 2020-08-07: response fields were updated for Ad, Site, and Zone objects
+    * **2.0.7** / 2020-10-05: idsite and idzone params were added to custom-rtb report
+    * **2.1.0** / 2021-02-27: added new method /ad that returns ads of a campaign
+    * **2.1.1** / 2021-03-12: added new methods /withdraw, /payment, /transaction, /statement
+    * **2.1.2** / 2022-01-24: methods /withdraw* were renamed to /payout*
+    * **2.1.3** / 2022-02-09: Campaign object description improved
+    * **2.2.0** / 2022-06-01: user/login method is deprecated. You should use UI for tokens creation
+    * **2.2.1** / 2022-08-10: added new method /zone that returns zones of a site
+    * **2.2.2** / 2023-04-06: added new fields to Zone object
+    * **2.2.3** / 2023-08-08: added fields "width" and "height" to Zone object. Added new field "countries" to /dict method
+    * **2.2.4** / 2023-11-23: added fields "referral" and "balances" (when with_balances=1) to User object, "referral_code" field added to UserRequest object
+    * **2.2.5** / 2023-11-27: added method /publish/verify to support website ownership verification, added field "verified_at" to Site objects
+    * **2.2.6** / 2023-11-30: added method /referral that returns the list of referred users, added POST /payout method
+    * **2.2.7** / 2023-12-07: added methods /publish/site and /advert/campaign. Campaign object was significantly updated
+    * **2.2.8** / 2024-01-01: added method /zone/assign
+    * **2.3.0** / 2024-04-19: field "iddimension" renamed to "idsize" in the methods /zone /ad, field "dimensions" renamed to "sizes" in /dict method
+    * **2.3.1** / 2024-06-24: fields "start_time" and "finish_time" added to /campaign
+    * **2.3.2** / 2024-08-06: Object AdDirectLink renamed to AdLink. Counter type for links and pops is now integer 1 or 2.
+    * **2.4.0** / 2025-08-01: added methods GET /publish/zone, /publish/payout, /publish/transaction
+
+  version: 2.4.0
+  title: Adserver.Online API
+
+  termsOfService: https://adserver.online/page/tos
+  contact:
+    name: Technical support
+    email: support@adsrv.org
+
+servers:
+  - url: https://api.adsrv.net/v2
+    description: production
+
+security:
+  - Bearer: []
+
+tags:
+  - name: Adv. reports
+    x-displayName: Reports
+  - name: Adv. campaigns
+    x-displayName: Campaigns
+  - name: Adv. ads
+    x-displayName: Ads
+  - name: Adv. other
+    x-displayName: Other
+  - name: Pub. reports
+    x-displayName: Reports
+  - name: Pub. sites
+    x-displayName: Sites
+  - name: Pub. zones
+    x-displayName: Zones
+  - name: Pub. payouts
+    x-displayName: Payouts
+  - name: Pub. transactions
+    x-displayName: Transactions
+  - name: Pub. other
+    x-displayName: Other
+
+x-tagGroups:
+  - name: Owner methods
+    tags:
+      - Reports
+      - Users
+      - Campaigns
+      - Ads
+      - Sites
+      - Zones
+      - Payments
+      - Payouts
+      - Transactions
+      - Referrals
+      - Other
+
+  - name: Advertiser methods
+    tags:
+      - Adv. reports
+      - Adv. campaigns
+      - Adv. ads
+      - Adv. other
+
+  - name: Publisher methods
+    tags:
+      - Pub. reports
+      - Pub. sites
+      - Pub. zones
+      - Pub. payouts
+      - Pub. transactions
+      - Pub. other
+
+paths:
+
+  /user:
+    get:
+      tags:
+        - Users
+      summary: List users
+      operationId: getUsers
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: per-page
+          schema:
+            type: integer
+        - in: query
+          name: sort
+          schema:
+            type: string
+        - $ref: '#/components/parameters/ListFilter'
+
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Pagination-Total-Count:
+              schema:
+                type: integer
+            X-Pagination-Page-Count:
+              schema:
+                type: integer
+            X-Pagination-Current-Page:
+              schema:
+                type: integer
+            X-Pagination-Per-Page:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+    post:
+      tags:
+        - Users
+      summary: Create user
+      operationId: createUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRequest'
+      responses:
+        '200':
+          description: Created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+        '400':
+          $ref: '#/components/responses/FormErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /user/{id}:
+    get:
+      tags:
+        - Users
+      summary: Get user
+      operationId: getUser
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+        - in: query
+          name: with_balances
+          schema:
+            type: integer
+            default: 0
+            enum: [0, 1]
+          description: Whether to include related balances to the response
+
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+        '404':
+          description: User not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+    put:
+      tags:
+        - Users
+      summary: Update user
+      operationId: updateUser
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRequest'
+
+      responses:
+        '200':
+          description: Update successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+        '400':
+          $ref: '#/components/responses/FormErrorResponse'
+        '404':
+          description: User not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+    delete:
+      tags:
+        - Users
+      summary: Delete user
+      operationId: deleteUser
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+
+      responses:
+        '200':
+          description: Deleted successfully
+        '404':
+          description: User not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /stats:
+    get:
+      tags:
+        - Reports
+      summary: Statistics
+      operationId: getStats
+      parameters:
+        - in: query
+          name: dateBegin
+          schema:
+            type: string
+          required: true
+          description: Beginning of date interval
+          example: '2019-01-01'
+
+        - in: query
+          name: dateEnd
+          schema:
+            type: string
+          required: true
+
+          description: Ending of date interval
+          example: '2019-02-01'
+
+        - in: query
+          name: group
+          description: Group by
+          required: true
+          schema:
+            type: string
+            enum: [day, month, year, hour, dof, dom, advertiser, campaign, price_model, campaign_category, campaign_group, ad, format, size, publisher, site, site_category, zone, zone_format, zone_size, country, country_code, postal_code, os, browser, device, brand, language, domain, domain1, referrer, ref, refid1]
+
+        - in: query
+          name: group2
+          description: Extra group by. Supports the same values as "group" parameter.
+          schema:
+            type: string
+
+        - in: query
+          name: timezone
+          description: Time zone
+          schema:
+            type: string
+          example: UTC
+
+        - in: query
+          name: idadvertiser
+          description: Filter by advertiser ID
+          schema:
+            type: integer
+
+        - in: query
+          name: idcampaign
+          description: Filter by campaign ID
+          schema:
+            type: integer
+
+        - in: query
+          name: idgroup
+          description: Filter by campaign group ID
+          schema:
+            type: integer
+
+        - in: query
+          name: idad
+          description: Filter by ad ID. Supports arrays e.g. idad[]=1&idad[]=2
+          schema:
+            type: integer
+
+        - in: query
+          name: idpublisher
+          description: Filter by publisher ID
+          schema:
+            type: integer
+
+        - in: query
+          name: idsite
+          description: Filter by site ID
+          schema:
+            type: integer
+
+        - in: query
+          name: idzone
+          description: Filter by zone ID. Supports arrays e.g. idzone[]=1&idzone[]=2
+          schema:
+            type: integer
+
+        - in: query
+          name: idcountry
+          description: Filter by country geoname ID. Check https://geoname.org for IDs
+          schema:
+            type: integer
+
+        - in: query
+          name: iddevice
+          description: Filter by device ID. Supports arrays e.g. iddevice[]=1&iddevice[]=2
+          schema:
+            type: integer
+
+        - in: query
+          name: idos
+          description: Filter by OS ID. Supports arrays e.g. idos[]=1&idos[]=2
+          schema:
+            type: integer
+
+        - in: query
+          name: idbrowser
+          description: Filter by browser ID. Supports arrays e.g. idbrowser[]=1&idbrowser[]=2
+          schema:
+            type: integer
+
+        - in: query
+          name: idadsize
+          description: Filter by ad size ID. Supports arrays e.g. idadsize[]=1&idadsize[]=2
+          schema:
+            type: integer
+
+        - in: query
+          name: idadformat
+          description: Filter by ad format ID. Supports arrays e.g. idadformat[]=1&idadformat[]=2
+          schema:
+            type: integer
+
+        - in: query
+          name: idzoneformat
+          description: Filter by zone format ID. Supports arrays e.g. idzoneformat[]=1&idzoneformat[]=2
+          schema:
+            type: integer
+
+        - in: query
+          name: idcampaigncategory
+          description: Filter by campaign category ID. Supports arrays e.g. idcampaigncategory[]=1&idcampaigncategory[]=2
+          schema:
+            type: integer
+
+        - in: query
+          name: idsitecategory
+          description: Filter by site category ID. Supports arrays e.g. idsitecategory[]=1&idsitecategory[]=2
+          schema:
+            type: integer
+
+        - in: query
+          name: language
+          description: Filter by language. Supports arrays e.g. language[]=EN&language[]=DE
+          schema:
+            type: string
+
+        - in: query
+          name: refid
+          description: Filter by RefID
+          schema:
+            type: string
+
+        - in: query
+          name: with_trafq
+          description: Whether to include TrafQ column to the response
+          schema:
+            type: integer
+            enum: [0, 1]
+            default: 0
+
+        - in: query
+          name: with_pub_metrics
+          description: Whether to include impressions_pub and clicks_pub columns to the response
+          schema:
+            type: integer
+            enum: [0, 1]
+            default: 0
+
+      responses:
+        '200':
+          description: Report created successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StatsItem'
+        '400':
+          $ref: '#/components/responses/FormErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+      x-code-samples:
+        - lang: Curl
+          source: |
+            curl -X POST -H "Authorization: Bearer put_your_api_token_here" -H "Content-Type: application/json" \
+              "https://api.adsrv.net/v2/stats?dateBegin=2019-01-01&dateEnd=2019-01-31&group=site"
+
+        - lang: PHP
+          source: |
+            <?php
+            use GuzzleHttp\Client;
+
+            $apiToken = 'put_your_api_token_here';
+
+            $endPoint = 'https://api.adsrv.net/v2';
+            $client = new Client();
+
+            $request = $client->get($endPoint . '/stats', [
+              'headers' => [
+                  'Authorization' => 'Bearer ' . $apiToken,
+                  'Accept'        => 'application/json'
+              ],
+              'query'   => [
+                  'dateBegin' => '2019-01-01',
+                  'dateEnd'   => '2019-01-31',
+                  'group'     => 'site'
+              ]
+            ]);
+            $response = json_decode($request->getBody());
+
+            var_dump($response);
+
+
+  /events:
+    get:
+      tags:
+        - Reports
+      summary: Video events
+      operationId: getEvents
+      parameters:
+        - in: query
+          name: dateBegin
+          schema:
+            type: string
+          required: true
+          description: Beginning of date interval
+          example: '2019-01-01'
+
+        - in: query
+          name: dateEnd
+          schema:
+            type: string
+          required: true
+
+          description: Ending of date interval
+          example: '2019-02-01'
+
+        - in: query
+          name: report
+          required: true
+          schema:
+            type: integer
+            enum: [1, 2]
+          description: >
+            Report types:
+             * 1 - VAST
+             * 2 - Video banner
+
+        - in: query
+          name: group
+          description: Group by
+          required: true
+          schema:
+            type: string
+            enum: [day, month, year, advertiser, campaign, ad, publisher, site, zone]
+
+        - in: query
+          name: timezone
+          description: Time zone
+          schema:
+            type: string
+          example: 'UTC'
+
+        - in: query
+          name: idadvertiser
+          description: Filter by advertiser ID
+          schema:
+            type: integer
+
+        - in: query
+          name: idcampaign
+          description: Filter by campaign ID
+          schema:
+            type: integer
+
+        - in: query
+          name: idgroup
+          description: Filter by campaign group ID
+          schema:
+            type: integer
+
+        - in: query
+          name: idad
+          description: Filter by ad ID
+          schema:
+            type: integer
+
+        - in: query
+          name: idpublisher
+          description: Filter by publisher ID
+          schema:
+            type: integer
+
+        - in: query
+          name: idsite
+          description: Filter by site ID
+          schema:
+            type: integer
+
+        - in: query
+          name: idzone
+          description: Filter by zone ID
+          schema:
+            type: integer
+
+      responses:
+        '200':
+          description: Report created successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EventsItem'
+        '400':
+          $ref: '#/components/responses/FormErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /conversion:
+    get:
+      tags:
+        - Reports
+      summary: Conversions
+      operationId: getConversions
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: per-page
+          schema:
+            type: integer
+        - in: query
+          name: sort
+          schema:
+            type: string
+        - $ref: '#/components/parameters/ListFilter'
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Pagination-Total-Count:
+              schema:
+                type: integer
+            X-Pagination-Page-Count:
+              schema:
+                type: integer
+            X-Pagination-Current-Page:
+              schema:
+                type: integer
+            X-Pagination-Per-Page:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+
+  /statement:
+    get:
+      tags:
+        - Reports
+      summary: Statement
+      operationId: getStatement
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: per-page
+          schema:
+            type: integer
+        - in: query
+          name: sort
+          schema:
+            type: string
+        - $ref: '#/components/parameters/ListFilter'
+
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Pagination-Total-Count:
+              schema:
+                type: integer
+            X-Pagination-Page-Count:
+              schema:
+                type: integer
+            X-Pagination-Current-Page:
+              schema:
+                type: integer
+            X-Pagination-Per-Page:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Statement'
+
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /campaign:
+    get:
+      tags:
+        - Campaigns
+      summary: List campaigns
+      operationId: getCampaigns
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: per-page
+          schema:
+            type: integer
+        - in: query
+          name: sort
+          schema:
+            type: string
+        - $ref: '#/components/parameters/ListFilter'
+        - in: query
+          name: with_pub
+          description: Whether to include assigned publishers to the response. Applies to manually assigned zones only
+          schema:
+            type: integer
+            enum: [0, 1]
+            default: 0
+
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Pagination-Total-Count:
+              schema:
+                type: integer
+            X-Pagination-Page-Count:
+              schema:
+                type: integer
+            X-Pagination-Current-Page:
+              schema:
+                type: integer
+            X-Pagination-Per-Page:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Campaign'
+
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+    post:
+      tags:
+        - Campaigns
+      summary: Create campaign
+      operationId: createCampaign
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignRequest'
+      responses:
+        '200':
+          description: Created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+        '400':
+          $ref: '#/components/responses/FormErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /campaign/{id}:
+    get:
+      tags:
+        - Campaigns
+      summary: Get campaign
+      operationId: getCampaign
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+        - in: query
+          name: with_pub
+          description: Whether to include assigned publishers to the response. Applies to manually assigned zones only.
+          schema:
+            type: integer
+            enum: [0, 1]
+            default: 0
+
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+
+        '404':
+          description: Campaign not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+    put:
+      tags:
+        - Campaigns
+      summary: Update campaign
+      operationId: updateCampaign
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignRequest'
+
+      responses:
+        '200':
+          description: Update successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+
+        '400':
+          $ref: '#/components/responses/FormErrorResponse'
+        '404':
+          description: Campaign not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+      x-code-samples:
+        - lang: PHP
+          source: |
+            <?php
+            use GuzzleHttp\Client;
+
+            $apiToken = 'put_your_api_token_here';
+
+            $endPoint = 'https://api.adsrv.net/v2';
+            $client = new Client();
+
+            $request = $client->get($endPoint . '/campaign/123', [
+              'headers' => [
+                  'Authorization' => 'Bearer ' . $apiToken
+              ],
+              'json'   => [
+                  'idrunstatus' => 4020 //pause campaign
+              ]
+            ]);
+            $response = json_decode($request->getBody());
+
+            var_dump($response);
+
+    delete:
+      tags:
+        - Campaigns
+      summary: Delete campaign
+      operationId: deleteCampaign
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+
+      responses:
+        '200':
+          description: Deleted successfully
+        '404':
+          description: Campaign not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /ad:
+    get:
+      tags:
+        - Ads
+      summary: List ads
+      operationId: getAds
+      parameters:
+        - in: query
+          name: idcampaign
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: per-page
+          schema:
+            type: integer
+        - in: query
+          name: sort
+          schema:
+            type: string
+        - $ref: '#/components/parameters/ListFilter'
+
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Pagination-Total-Count:
+              schema:
+                type: integer
+            X-Pagination-Page-Count:
+              schema:
+                type: integer
+            X-Pagination-Current-Page:
+              schema:
+                type: integer
+            X-Pagination-Per-Page:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Ad'
+
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+    post:
+      tags:
+        - Ads
+      summary: Create ad
+      operationId: createAd
+      parameters:
+        - in: query
+          name: idformat
+          schema:
+            type: integer
+          required: true
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdRequest'
+
+      responses:
+        '200':
+          description: Created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ad'
+
+        '400':
+          $ref: '#/components/responses/FormErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /ad/{id}:
+    get:
+      tags:
+        - Ads
+      summary: Get ad
+      operationId: getAd
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+        - in: query
+          name: with_preview
+          description: If 1, will return a preview html code
+          schema:
+            type: integer
+            enum: [0, 1]
+            default: 0
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ad'
+
+        '404':
+          description: Ad not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+    put:
+      tags:
+        - Ads
+      summary: Update ad
+      operationId: updateAd
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdRequest'
+
+      responses:
+        '200':
+          description: Update successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ad'
+
+        '400':
+          $ref: '#/components/responses/FormErrorResponse'
+        '404':
+          description: Ad not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+    delete:
+      tags:
+        - Ads
+      summary: Delete ad
+      operationId: deleteAd
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+
+      responses:
+        '200':
+          description: Deleted successfully
+        '404':
+          description: Ad not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /ad/assign:
+    post:
+      tags:
+        - Ads
+      summary: Assign ad to zones
+      operationId: assignAdToZones
+      parameters:
+        - in: query
+          name: id
+          schema:
+            type: integer
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - zones
+              properties:
+                zones:
+                  type: array
+                  items:
+                    type: integer
+      responses:
+        '200':
+          description: Zones assigned successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignedZones'
+        '400':
+          description: Invalid request parameters
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '404':
+          description: Ad not found
+
+  /site:
+    get:
+      tags:
+        - Sites
+      summary: List sites
+      operationId: getSites
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: per-page
+          schema:
+            type: integer
+        - in: query
+          name: sort
+          schema:
+            type: string
+        - $ref: '#/components/parameters/ListFilter'
+        - in: query
+          name: with_zones
+          description: Whether to include active zones list into the response
+          schema:
+            type: integer
+            enum: [0, 1]
+            default: 1
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Pagination-Total-Count:
+              schema:
+                type: integer
+            X-Pagination-Page-Count:
+              schema:
+                type: integer
+            X-Pagination-Current-Page:
+              schema:
+                type: integer
+            X-Pagination-Per-Page:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Site'
+
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+    post:
+      tags:
+        - Sites
+      summary: Create site
+      operationId: createSite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SiteRequest'
+      responses:
+        '200':
+          description: Created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Site'
+
+        '400':
+          $ref: '#/components/responses/FormErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /site/{id}:
+    get:
+      tags:
+        - Sites
+      summary: Get site
+      operationId: getSite
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Site'
+
+        '404':
+          description: Site not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+    put:
+      tags:
+        - Sites
+      summary: Update site
+      operationId: updateSite
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SiteRequest'
+
+      responses:
+        '200':
+          description: Update successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Site'
+
+        '400':
+          $ref: '#/components/responses/FormErrorResponse'
+        '404':
+          description: Site not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+    delete:
+      tags:
+        - Sites
+      summary: Delete site
+      operationId: deleteSite
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+
+      responses:
+        '200':
+          description: Deleted successfully
+        '404':
+          description: Site not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /zone:
+    get:
+      tags:
+        - Zones
+      summary: List zones
+      operationId: getZones
+      parameters:
+        - in: query
+          name: idsite
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: per-page
+          schema:
+            type: integer
+        - in: query
+          name: sort
+          schema:
+            type: string
+        - $ref: '#/components/parameters/ListFilter'
+
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Pagination-Total-Count:
+              schema:
+                type: integer
+            X-Pagination-Page-Count:
+              schema:
+                type: integer
+            X-Pagination-Current-Page:
+              schema:
+                type: integer
+            X-Pagination-Per-Page:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Zone'
+
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+    post:
+      tags:
+        - Zones
+      summary: Create zone
+      operationId: createZone
+      parameters:
+        - in: query
+          name: idsite
+          schema:
+            type: integer
+          required: true
+        - in: query
+          name: idformat
+          schema:
+            type: integer
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ZoneRequest'
+      responses:
+        '200':
+          description: Created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Zone'
+
+        '400':
+          $ref: '#/components/responses/FormErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /zone/{id}:
+    get:
+      tags:
+        - Zones
+      summary: Get zone
+      operationId: getZone
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Zone'
+
+        '404':
+          description: Zone not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+    put:
+      tags:
+        - Zones
+      summary: Update zone
+      operationId: updateZone
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ZoneRequest'
+
+      responses:
+        '200':
+          description: Update successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Zone'
+
+        '400':
+          $ref: '#/components/responses/FormErrorResponse'
+        '404':
+          description: Zone not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+    delete:
+      tags:
+        - Zones
+      summary: Delete zone
+      operationId: deleteZone
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+
+      responses:
+        '200':
+          description: Deleted successfully
+        '404':
+          description: Zone not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /zone/assign:
+    post:
+      tags:
+        - Zones
+      summary: Assign zone to ads
+      operationId: assignZoneToAds
+      parameters:
+        - in: query
+          name: id
+          schema:
+            type: integer
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - ads
+              properties:
+                ads:
+                  type: array
+                  items:
+                    type: integer
+      responses:
+        '200':
+          description: Ads assigned successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignedAds'
+
+        '400':
+          description: Invalid request parameters
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+        '404':
+          description: Zone not found
+
+  /payment:
+    get:
+      tags:
+        - Payments
+      summary: List payments
+      operationId: getPayments
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: per-page
+          schema:
+            type: integer
+        - in: query
+          name: sort
+          schema:
+            type: string
+        - $ref: '#/components/parameters/ListFilter'
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Pagination-Total-Count:
+              schema:
+                type: integer
+            X-Pagination-Page-Count:
+              schema:
+                type: integer
+            X-Pagination-Current-Page:
+              schema:
+                type: integer
+            X-Pagination-Per-Page:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Payment'
+
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+    post:
+      tags:
+        - Payments
+      summary: Create payment
+      operationId: createPayment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentRequest'
+      responses:
+        '200':
+          description: Created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+
+        '400':
+          $ref: '#/components/responses/FormErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+  /payout:
+    get:
+      tags:
+        - Payouts
+      summary: List payouts
+      operationId: getPayouts
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: per-page
+          schema:
+            type: integer
+        - in: query
+          name: sort
+          schema:
+            type: string
+        - $ref: '#/components/parameters/ListFilter'
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Pagination-Total-Count:
+              schema:
+                type: integer
+            X-Pagination-Page-Count:
+              schema:
+                type: integer
+            X-Pagination-Current-Page:
+              schema:
+                type: integer
+            X-Pagination-Per-Page:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Payout'
+
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+    post:
+      tags:
+        - Payouts
+      summary: Create payout
+      operationId: createPayout
+      parameters:
+       - in: query
+         name: check_amount
+         description: 1 by default. Enables available amount check.
+         schema:
+           type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PayoutRequest'
+      responses:
+        '200':
+          description: Created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payout'
+        '400':
+           $ref: '#/components/responses/FormErrorResponse'
+        '401':
+           $ref: '#/components/responses/UnauthorizedResponse'
+
+  /referral:
+    get:
+      tags:
+        - Referrals
+      summary: List referrals
+      operationId: getReferrals
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: per-page
+          schema:
+            type: integer
+        - in: query
+          name: sort
+          schema:
+            type: string
+        - $ref: '#/components/parameters/ListFilter'
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Pagination-Total-Count:
+              schema:
+                type: integer
+            X-Pagination-Page-Count:
+              schema:
+                type: integer
+            X-Pagination-Current-Page:
+              schema:
+                type: integer
+            X-Pagination-Per-Page:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Referral'
+
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /transaction:
+    get:
+      tags:
+        - Transactions
+      summary: List transactions
+      operationId: getTransactions
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: per-page
+          schema:
+            type: integer
+        - in: query
+          name: sort
+          schema:
+            type: string
+        - $ref: '#/components/parameters/ListFilter'
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Pagination-Total-Count:
+              schema:
+                type: integer
+            X-Pagination-Page-Count:
+              schema:
+                type: integer
+            X-Pagination-Current-Page:
+              schema:
+                type: integer
+            X-Pagination-Per-Page:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Transaction'
+
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+    post:
+      tags:
+        - Transactions
+      summary: Create transaction
+      operationId: createTransaction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionRequest'
+      responses:
+        '200':
+          description: Created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transaction'
+        '400':
+          $ref: '#/components/responses/FormErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /transaction/{id}:
+    get:
+      tags:
+        - Transactions
+      summary: Get transaction
+      operationId: getTransaction
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transaction'
+
+        '404':
+          description: Zone not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /dict:
+    get:
+      tags:
+        - Other
+      summary: Data dictionaries
+      operationId: getDictionaries
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dict'
+
+  /publish/site:
+    get:
+      tags:
+        - Pub. sites
+      summary: List sites
+      operationId: PubGetSites
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: per-page
+          schema:
+            type: integer
+        - in: query
+          name: sort
+          schema:
+            type: string
+        - $ref: '#/components/parameters/ListFilter'
+        - in: query
+          name: with_zones
+          description: Whether to include active zones list into the response
+          schema:
+            type: integer
+            enum: [0, 1]
+            default: 1
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Pagination-Total-Count:
+              schema:
+                type: integer
+            X-Pagination-Page-Count:
+              schema:
+                type: integer
+            X-Pagination-Current-Page:
+              schema:
+                type: integer
+            X-Pagination-Per-Page:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Site'
+
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+    post:
+      tags:
+        - Pub. sites
+      summary: Create site
+      operationId: PubCreateSite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PubSiteRequest'
+      responses:
+        '200':
+          description: Created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Site'
+
+        '400':
+          $ref: '#/components/responses/FormErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /publish/site/{id}:
+    get:
+      tags:
+        - Pub. sites
+      summary: Get site
+      operationId: PubGetSite
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Site'
+
+        '404':
+          description: Site not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+    put:
+      tags:
+        - Pub. sites
+      summary: Update site
+      operationId: PubUpdateSite
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PubSiteRequest'
+
+      responses:
+        '200':
+          description: Update successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Site'
+
+        '400':
+          $ref: '#/components/responses/FormErrorResponse'
+        '404':
+          description: Site not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+    delete:
+      tags:
+        - Pub. sites
+      summary: Delete site
+      operationId: PubDeleteSite
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+
+      responses:
+        '200':
+          description: Deleted successfully
+        '404':
+          description: Site not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /publish/verify/{id}:
+    get:
+      tags:
+        - Pub. sites
+      summary: Get verification methods
+      operationId: PubGetSiteVerificationMethods
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Verification is not required
+
+        '404':
+          description: Site not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+    put:
+      tags:
+        - Pub. sites
+      summary: Check verification
+      operationId: PubCheckSiteVerification
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+        - in: query
+          name: method
+          schema:
+            enum: [file, dns, tag]
+          required: true
+
+      responses:
+        '200':
+          description: Verified successfully
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/FormErrorResponse'
+        '404':
+          description: Site not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /publish/zone:
+    post:
+      tags:
+        - Pub. zones
+      summary: Create zone
+      operationId: PubCreateZone
+      parameters:
+        - in: query
+          name: idsite
+          schema:
+            type: integer
+          required: true
+        - in: query
+          name: idformat
+          schema:
+            type: integer
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PubZoneRequest'
+      responses:
+        '200':
+          description: Created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Zone'
+
+        '400':
+          $ref: '#/components/responses/FormErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /publish/zone/{id}:
+    get:
+      tags:
+        - Pub. zones
+      summary: Get zone
+      operationId: PubGetZone
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Zone'
+
+        '404':
+          description: Zone not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+    put:
+      tags:
+        - Pub. zones
+      summary: Update zone
+      operationId: PubUpdateZone
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PubZoneRequest'
+
+      responses:
+        '200':
+          description: Update successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Zone'
+
+        '400':
+          $ref: '#/components/responses/FormErrorResponse'
+        '404':
+          description: Zone not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+    delete:
+      tags:
+        - Pub. zones
+      summary: Delete zone
+      operationId: PubDeleteZone
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+
+      responses:
+        '200':
+          description: Deleted successfully
+        '404':
+          description: Zone not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /publish/transaction:
+    get:
+      tags:
+        - Pub. transactions
+      summary: List transactions
+      operationId: PubGetTransactions
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: per-page
+          schema:
+            type: integer
+        - in: query
+          name: sort
+          schema:
+            type: string
+        - $ref: '#/components/parameters/ListFilter'
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Pagination-Total-Count:
+              schema:
+                type: integer
+            X-Pagination-Page-Count:
+              schema:
+                type: integer
+            X-Pagination-Current-Page:
+              schema:
+                type: integer
+            X-Pagination-Per-Page:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Transaction'
+
+  /publish/payout:
+    get:
+      tags:
+        - Pub. payouts
+      summary: List payouts
+      operationId: PubGetPayouts
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: per-page
+          schema:
+            type: integer
+        - in: query
+          name: sort
+          schema:
+            type: string
+        - $ref: '#/components/parameters/ListFilter'
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Pagination-Total-Count:
+              schema:
+                type: integer
+            X-Pagination-Page-Count:
+              schema:
+                type: integer
+            X-Pagination-Current-Page:
+              schema:
+                type: integer
+            X-Pagination-Per-Page:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Payout'
+
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+    post:
+      tags:
+        - Pub. payouts
+      summary: Create payout
+      operationId: PubCreatePayout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PubPayoutRequest'
+      responses:
+        '200':
+          description: Created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payout'
+        '400':
+           $ref: '#/components/responses/FormErrorResponse'
+        '401':
+           $ref: '#/components/responses/UnauthorizedResponse'
+
+  /publish/stats:
+    get:
+      tags:
+        - Pub. reports
+      summary: Publisher stats
+      operationId: PubGetStats
+      parameters:
+        - in: query
+          name: dateBegin
+          schema:
+            type: string
+          required: true
+          description: Beginning of date interval
+          example: '2019-01-01'
+
+        - in: query
+          name: dateEnd
+          schema:
+            type: string
+          required: true
+
+          description: Ending of date interval
+          example: '2019-02-01'
+
+        - in: query
+          name: group
+          description: Group by
+          required: true
+          schema:
+            type: string
+            enum: [day, month, year, hour, site, zone, country, country_code, os, browser, device, brand]
+
+        - in: query
+          name: timezone
+          description: Time zone
+          schema:
+            type: string
+          example: 'UTC'
+
+        - in: query
+          name: idsite
+          description: Filter by site ID
+          schema:
+            type: integer
+
+        - in: query
+          name: idzone
+          description: Filter by zone ID
+          schema:
+            type: integer
+
+      responses:
+        '200':
+          description: Report created successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StatsItem'
+
+        '400':
+          $ref: '#/components/responses/FormErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /publish/stats/custom-rtb:
+    get:
+      tags:
+        - Pub. reports
+      operationId: "PubGetCustomRtbReport"
+      summary: Publisher RTB report
+      description:
+        This report based on ```imp.tagid``` OpenRTB tag. Please note, data is available for last 60 days only.
+      parameters:
+        - in: query
+          name: dateBegin
+          schema:
+            type: string
+          required: true
+          description: Beginning of date interval
+          example: '2019-01-01'
+
+        - in: query
+          name: dateEnd
+          schema:
+            type: string
+          required: true
+
+          description: Ending of date interval
+          example: '2019-02-01'
+
+        - in: query
+          name: timezone
+          description: Time zone
+          schema:
+            type: string
+          example: 'UTC'
+
+        - in: query
+          name: idsite
+          description: Filter by site ID. Supports arrays e.g. idsite[]=1&idsite[]=2
+          schema:
+            type: integer
+          example: 123
+
+        - in: query
+          name: idzone
+          description: Filter by zone ID. Supports arrays e.g. idzone[]=1&idzone[]=2
+          schema:
+            type: integer
+          example: 456
+
+      responses:
+        '200':
+          description: Report created successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StatsCustomRtbItem'
+
+        '400':
+          $ref: '#/components/responses/FormErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /publish/dict:
+    get:
+      tags:
+        - Pub. other
+      summary: Return publisher data dictionaries
+      operationId: PubGetDictionaries
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PubDict'
+
+  /advert/stats:
+    get:
+      tags:
+        - Adv. reports
+      summary: Advertiser stats
+      operationId: AdvGetStats
+      parameters:
+        - in: query
+          name: dateBegin
+          schema:
+            type: string
+          required: true
+          description: Beginning of date interval
+          example: '2019-01-01'
+
+        - in: query
+          name: dateEnd
+          schema:
+            type: string
+          required: true
+
+          description: Ending of date interval
+          example: '2019-02-01'
+
+        - in: query
+          name: group
+          description: Group by
+          required: true
+          schema:
+            type: string
+            enum: [day, month, year, hour, campaign, ad, price_model, idsite, idzone, country, country_code, os, browser, device, brand, language]
+
+        - in: query
+          name: timezone
+          description: Time zone
+          schema:
+            type: string
+          example: 'UTC'
+
+        - in: query
+          name: idcampaign
+          description: Filter by campaign ID
+          schema:
+            type: integer
+
+        - in: query
+          name: idusergroup
+          description: Filter by campaign group ID
+          schema:
+            type: integer
+
+        - in: query
+          name: idad
+          description: Filter by ad ID
+          schema:
+            type: integer
+
+      responses:
+        '200':
+          description: Report created successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StatsItem'
+
+        '400':
+          $ref: '#/components/responses/FormErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /advert/campaign:
+    get:
+      tags:
+        - Adv. campaigns
+      summary: List campaigns
+      operationId: AdvGetCampaigns
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: per-page
+          schema:
+            type: integer
+        - in: query
+          name: sort
+          schema:
+            type: string
+        - $ref: '#/components/parameters/ListFilter'
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Pagination-Total-Count:
+              schema:
+                type: integer
+            X-Pagination-Page-Count:
+              schema:
+                type: integer
+            X-Pagination-Current-Page:
+              schema:
+                type: integer
+            X-Pagination-Per-Page:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Campaign'
+
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+    post:
+      tags:
+        - Adv. campaigns
+      summary: Create campaign
+      description: Please check owner's campaign/create method for more details.
+      operationId: AdvCreateCampaign
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdvCampaignRequest'
+      responses:
+        '200':
+          description: Created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+        '400':
+          $ref: '#/components/responses/FormErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /advert/campaign/{id}:
+    get:
+      tags:
+        - Adv. campaigns
+      summary: Get campaign
+      operationId: AdvGetCampaign
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+
+        '404':
+          description: Campaign not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+    put:
+      tags:
+        - Adv. campaigns
+      summary: Update campaign
+      operationId: AdvUpdateCampaign
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdvCampaignRequest'
+
+      responses:
+        '200':
+          description: Update successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+
+        '400':
+          $ref: '#/components/responses/FormErrorResponse'
+        '404':
+          description: Campaign not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+    delete:
+      tags:
+        - Adv. campaigns
+      summary: Delete campaign
+      operationId: AdvDeleteCampaign
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+
+      responses:
+        '200':
+          description: Deleted successfully
+        '404':
+          description: Campaign not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /advert/ad:
+    get:
+      tags:
+        - Adv. ads
+      summary: List ads
+      operationId: AdvGetAds
+      parameters:
+        - in: query
+          name: idcampaign
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: per-page
+          schema:
+            type: integer
+        - in: query
+          name: sort
+          schema:
+            type: string
+        - $ref: '#/components/parameters/ListFilter'
+
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Pagination-Total-Count:
+              schema:
+                type: integer
+            X-Pagination-Page-Count:
+              schema:
+                type: integer
+            X-Pagination-Current-Page:
+              schema:
+                type: integer
+            X-Pagination-Per-Page:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Ad'
+
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+    post:
+      tags:
+        - Adv. ads
+      summary: Create ad
+      operationId: AdvCreateAd
+      parameters:
+        - in: query
+          name: idcampaign
+          schema:
+            type: integer
+          required: true
+        - in: query
+          name: idformat
+          schema:
+            type: integer
+          required: true
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdvAdRequest'
+
+      responses:
+        '200':
+          description: Created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ad'
+
+        '400':
+          $ref: '#/components/responses/FormErrorResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /advert/ad/{id}:
+    get:
+      tags:
+        - Adv. ads
+      summary: Get ad
+      operationId: AdvGetAd
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ad'
+
+        '404':
+          description: Ad not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+    put:
+      tags:
+        - Adv. ads
+      summary: Update ad
+      operationId: AdvUpdateAd
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdvAdRequest'
+
+      responses:
+        '200':
+          description: Update successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ad'
+
+        '400':
+          $ref: '#/components/responses/FormErrorResponse'
+        '404':
+          description: Ad not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+    delete:
+      tags:
+        - Adv. ads
+      summary: Delete ad
+      operationId: AdvDeleteAd
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+
+      responses:
+        '200':
+          description: Deleted successfully
+        '404':
+          description: Ad not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedResponse'
+
+  /advert/dict:
+    get:
+      tags:
+        - Adv. other
+      summary: Return advertiser data dictionaries
+      operationId: AdvGetDictionaries
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdvDict'
+
+components:
+  securitySchemes:
+    Bearer:
+      type: http
+      scheme: bearer
+      description: |
+        The most of endpoints in the API require authentication.
+
+        Bearer authentication (also called token authentication) is an [HTTP authentication scheme](https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication) that involves security tokens called bearer tokens.
+        The client must include an access token in the **Authorization** header when making requests to protected resources:
+        ```
+        Authorization: Bearer <token>
+        ```
+        You should create a token in **Account / API tokens** menu located at the top right corner of your panel.
+
+  responses:
+    UnauthorizedResponse:
+      description: Unauthorized
+
+    FormErrorResponse:
+      description: Input data are incorrect
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/FormErrorResponse'
+
+  parameters:
+    ListFilter:
+      name: filter
+      in: query
+      style: deepObject
+      explode: true
+      schema:
+        type: object
+        properties:
+          field1:
+            type: string
+          field2:
+            type: string
+          fieldN:
+            type: string
+      description: >
+        Filter the list by parameters. Parameters are undocumented. You can find them in the HTML code of the Web UI by using Dev  Tools over the list pages or ask support.
+      examples:
+        name:
+          summary: Filter by name
+          value:
+            name: foo
+
+  schemas:
+    FormErrorResponse:
+      type: object
+      required:
+        - errors
+      properties:
+        errors:
+          type: object
+          example:
+            someField: [SomeField is not valid.]
+            anotherField: [AnotherField must be an integer., AnotherField must be great than 0.]
+
+    Campaign:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        advertiser:
+          type: object
+        status:
+          type: object
+        block_reason:
+          type: string
+        runstatus:
+          type: object
+        format:
+          type: object
+        pricemodel:
+          type: object
+        rate:
+          type: number
+        group:
+          type: object
+        category:
+          type: object
+        counters:
+          type: object
+        limits:
+          type: object
+        tier:
+          type: object
+        weight:
+          type: integer
+        timezone:
+          type: string
+        restrict_update:
+          type: boolean
+        ads:
+          type: array
+          items:
+            type: object
+        timetargeting:
+          type: string
+        frequency_capping:
+          type: object
+        os:
+          type: object
+        device:
+          type: object
+        browser:
+          type: object
+        brand:
+          type: object
+        geo:
+          type: array
+          items:
+            type: integer
+        geo_bl:
+          type: array
+          items:
+            type: integer
+        sites_category:
+          type: object
+        language:
+          type: object
+        attr:
+          type: array
+          items:
+            type: object
+
+        created_at:
+          type: string
+        updated_at:
+          type: string
+
+    CampaignRequest:
+      type: object
+      required:
+        - name
+        - idadvertiser
+
+      properties:
+        name:
+          type: string
+        idadvertiser:
+          type: integer
+        idcategory:
+          type: integer
+        idstatus:
+          type: integer
+          enum: [1510, 1520, 1530]
+          description: >
+            Moderation statuses:
+             * 1510 - Pending
+             * 1520 - Approved
+             * 1530 - Blocked
+        idrunstatus:
+          type: integer
+          enum: [4010, 4020, 4030]
+          description: >
+            Run statuses:
+             * 4010 - Running
+             * 4020 - Paused
+             * 4030 - Finished
+        idpricemodel:
+          type: integer
+          enum: [1, 2, 3, 4, 5]
+          description: >
+            Pricing models:
+             * 1 - CPM
+             * 2 - CPC
+             * 3 - CPA
+             * 4 - CPUC (cost per unique click)
+             * 5 - CPUM (cost per unique mile)
+             * 6 - CPV (cost per view)
+
+            [Learn more](https://adserver.online/article/pricing-models)
+        rate:
+          type: number
+
+        budget_total:
+          type: number
+        budget_daily:
+          type: number
+
+        limit_type:
+          type: integer
+          enum: [1, 2]
+          description: >
+            Limit type:
+             * 1 - Impressions
+             * 2 - Clicks
+        total_limit:
+          type: integer
+        daily_limit:
+          type: integer
+
+        start_date:
+          type: string
+          description: Format YYYY-MM-DD
+        start_time:
+          type: string
+          description: Optional. Default value "00:00". Format 00:00, 01:00 ... 23:00
+        finish_date:
+          type: string
+          description: Format YYYY-MM-DD
+        finish_time:
+          type: string
+          description: Optional. Default value "23:59". Format 00:59, 01:59 ... 23:59
+
+        timetargeting:
+          type: string
+          description: |
+            The value is two-dimensional array. Rows are week days: 1 (Monday) - 7 (Sunday), while columns are hours: 0 - 23.
+            You have to put **0** value to the needed cells to **disable** a particular time slot. A timeslot is enabled by default so you don't need to put 1 to enable cells.
+
+            For example, if you need to disable all time slots except for slots from 00:00 to 05:00 and from 22:00 to 23:00 you have to pass the following JSON-string as value:
+
+            ```json
+            {
+              "tt": {
+                "1": {"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"22":0,"23":0},
+                "2": {"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"22":0,"23":0},
+                "3": {"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"22":0,"23":0},
+                "4": {"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"22":0,"23":0},
+                "5": {"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"22":0,"23":0},
+                "6": {"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"22":0,"23":0},
+                "7": {"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"22":0,"23":0}
+              }
+            }
+            ```
+
+        th_mode:
+          type: integer
+          enum: [1, 2, 3, 4, 5]
+          description: >
+            Delivery speed modes:
+             * 1 - As Fast As Possible (default)
+             * 2 - Evenly (constant)
+             * 3 - Evenly
+             * 4 - Frontloaded
+             * 5 - Manual
+
+            [Learn more](https://adserver.online/article/delivery-speed)
+        th_limit:
+          type: integer
+          description: For manual delivery speed mode only
+        th_interval:
+          type: integer
+          enum: [1, 60, 300, 600, 900, 3600]
+          description: For manual delivery speed mode only
+
+        fc_counter:
+          type: integer
+          enum: [1,2]
+          description: Frequency capping counter type
+        fc_mode:
+          type: integer
+          enum: [1,2]
+          description: Frequency capping counter mode
+        fc_limit:
+          type: integer
+          description: Frequency capping limit
+        fc_interval:
+          type: integer
+          description: Frequency capping interval, hours
+
+        os:
+          type: array
+          items:
+            type: integer
+        os_mode:
+          type: integer
+          enum: [1,2]
+        browser:
+          type: array
+          items:
+            type: integer
+        browser_mode:
+          type: integer
+          enum: [1,2]
+        device:
+          type: array
+          items:
+            type: integer
+        device_mode:
+          type: integer
+          enum: [1,2]
+        brand:
+          type: array
+          items:
+            type: integer
+        brand_mode:
+          type: integer
+          enum: [1,2]
+        language:
+          type: array
+          items:
+            type: string
+        language_mode:
+          type: integer
+          enum: [1,2]
+        geo:
+          type: array
+          items:
+            type: integer
+          description: |
+            Geo-include list. Array of GeoNames IDs.
+        geo_bl:
+          type: array
+          items:
+            type: integer
+          description: |
+            Geo-exclude list. Array of GeoNames IDs.
+
+        sites_category:
+          type: array
+          items:
+            type: integer
+        sites_category_mode:
+          type: integer
+          enum: [1,2]
+
+        sites:
+          type: string
+          description: Website IDs. Comma-separated string.
+        sites_mode:
+          type: integer
+          enum: [1,2]
+
+        zones:
+          type: string
+          description: Zones IDs. Comma-separated string.
+        zones_mode:
+          type: integer
+          enum: [1,2]
+
+      example:
+        name: First campaign
+        idadvertiser: 123
+        idstatus: 1510
+        idrunstatus: 4020
+        idpricemodel: 2
+        rate: 0.0015
+        start_date: "2019-09-01"
+        finish_date: "2029-09-01"
+        os: [1,2]
+        device: [2]
+        browser: [4]
+        language: ["en", "es"]
+        geo: [453733, 2510769]
+        geo_bl: [3128759]
+        timetargeting: '{"tt":{"1":{"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"22":0,"23":0},"2":{"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"22":0,"23":0},"7":{"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"22":0,"23":0}}}'
+
+    AdvCampaignRequest:
+      type: object
+      required:
+        - idcategory
+        - idpricemodel
+      properties:
+        name:
+          type: string
+        idcategory:
+          type: integer
+        idrunstatus:
+          type: integer
+          enum: [4010, 4020, 4030]
+          description: >
+            Run statuses:
+             * 4010 - Running
+             * 4020 - Paused
+             * 4030 - Finished
+        idpricemodel:
+          type: integer
+        rate:
+          type: number
+
+        budget_total:
+          type: number
+        budget_daily:
+          type: number
+
+        limit_type:
+          type: integer
+          enum: [1, 2]
+        total_limit:
+          type: integer
+        daily_limit:
+          type: integer
+
+        start_date:
+          type: string
+        finish_date:
+          type: string
+        timetargeting:
+          type: string
+
+        fc_counter:
+          type: integer
+          enum: [1,2]
+          description: Frequency capping counter type
+        fc_mode:
+          type: integer
+          enum: [1,2]
+          description: Frequency capping counter mode
+        fc_limit:
+          type: integer
+          description: Frequency capping limit
+        fc_interval:
+          type: integer
+          description: Frequency capping interval, hours
+
+        os:
+          type: array
+          items:
+            type: integer
+        os_mode:
+          type: integer
+          enum: [1,2]
+        browser:
+          type: array
+          items:
+            type: integer
+        browser_mode:
+          type: integer
+          enum: [1,2]
+        device:
+          type: array
+          items:
+            type: integer
+        device_mode:
+          type: integer
+          enum: [1,2]
+        language:
+          type: array
+          items:
+            type: string
+        language_mode:
+          type: integer
+          enum: [1,2]
+        geo:
+          type: array
+          items:
+            type: integer
+          description: |
+            Geo-include list. Array of GeoNames IDs.
+        geo_bl:
+          type: array
+          items:
+            type: integer
+          description: |
+            Geo-exclude list. Array of GeoNames IDs.
+
+        sites_category:
+          type: array
+          items:
+            type: integer
+        sites_category_mode:
+          type: integer
+          enum: [1,2]
+
+        sites:
+          type: string
+          description: Website IDs. Comma-separated string.
+        sites_mode:
+          type: integer
+          enum: [1,2]
+
+        zones:
+          type: string
+          description: Zones IDs. Comma-separated string.
+        zones_mode:
+          type: integer
+          enum: [1,2]
+
+      example:
+        name: First campaign
+        idrunstatus: 4020
+        idpricemodel: 2
+        rate: 0.0015
+        start_date: "2019-09-01"
+        finish_date: "2029-09-01"
+    Ad:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        campaign:
+          type: object
+        status:
+          type: object
+        is_active:
+          type: boolean
+        format:
+          type: object
+        width:
+          type: string
+        height:
+          type: string
+        weight:
+          type: integer
+        size:
+          type: object
+        url:
+          type: string
+        pixel_url:
+          type: string
+        pixel_html:
+          type: string
+        details:
+          type: object
+        assigned_zones:
+          type: array
+          items:
+            type: object
+        created_at:
+          type: string
+        updated_at:
+          type: string
+
+    AdRequest:
+      type: object
+      required:
+        - idcampaign
+
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+        idcampaign:
+          type: integer
+        is_active:
+          type: boolean
+        idstatus:
+          type: integer
+          enum: [3000, 3010, 3030]
+          description: >
+            Moderation statuses:
+             * 3000 - Pending
+             * 3010 - Approved
+             * 3030 - Blocked
+        idtarget:
+          type: integer
+          enum: [1, 2]
+        details:
+          oneOf:
+            - $ref: '#/components/schemas/AdBannerImage'
+            - $ref: '#/components/schemas/AdBannerHtml'
+            - $ref: '#/components/schemas/AdBannerZip'
+            - $ref: '#/components/schemas/AdBannerNative'
+            - $ref: '#/components/schemas/AdBannerVideo'
+            - $ref: '#/components/schemas/AdLink'
+            - $ref: '#/components/schemas/AdPopup'
+            - $ref: '#/components/schemas/AdVastLinear'
+            - $ref: '#/components/schemas/AdPush'
+
+    AdvAdRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+        is_active:
+          type: boolean
+        details:
+          oneOf:
+            - $ref: '#/components/schemas/AdBannerImage'
+            - $ref: '#/components/schemas/AdBannerHtml'
+            - $ref: '#/components/schemas/AdBannerZip'
+            - $ref: '#/components/schemas/AdBannerNative'
+            - $ref: '#/components/schemas/AdBannerVideo'
+            - $ref: '#/components/schemas/AdLink'
+            - $ref: '#/components/schemas/AdPopup'
+            - $ref: '#/components/schemas/AdVastLinear'
+            - $ref: '#/components/schemas/AdPush'
+
+    AdPush:
+      type: object
+      description: Format-specific properties
+      properties:
+        headline:
+          type: string
+        file_icon:
+          type: string
+          description: Base64 encoded file
+
+    AdVastLinear:
+      type: object
+      description: Format-specific properties
+      properties:
+        file:
+          type: string
+          description: Base64 encoded file
+        skipoffset:
+          type: integer
+        skipoffset_type:
+          type: integer
+          enum: [1, 2]
+        allow_skip:
+          type: boolean
+        maintain_aspect_ratio:
+          type: boolean
+        video_scalable:
+          type: boolean
+
+    AdPopup:
+      type: object
+      description: Format-specific properties
+      properties:
+        counter_type:
+            type: integer
+            enum: [1, 2]
+            description: >
+              Counter type. It applies to CPA pricing model only. In other cases, the system selects it automatically base on campaign pricing model.
+              Types:
+               * 1 - Impressions
+               * 2 - Clicks
+
+    AdLink:
+      type: object
+      description: Format-specific properties
+      properties:
+        counter_type:
+            type: integer
+            enum: [1, 2]
+            description: >
+              Counter type. It applies to CPA pricing model only. In other cases, the system selects it automatically base on campaign pricing model.
+              Types:
+               * 1 - Impressions
+               * 2 - Clicks
+
+    AdBannerImage:
+      type: object
+      description: Format-specific properties
+      properties:
+        idsize:
+            type: integer
+            description: Size ID
+        file:
+          type: string
+          description: Base64 encoded file
+
+    AdBannerZip:
+      type: object
+      description: Format-specific properties
+      properties:
+        idsize:
+          type: integer
+          description: Size ID
+        file:
+          type: string
+          description: Base64 encoded file
+
+    AdBannerNative:
+      type: object
+      description: Format-specific properties
+      properties:
+        idsize:
+          type: integer
+          description: Size ID
+        headline:
+          type: string
+        body:
+          type: string
+        button:
+          type: string
+        label:
+          type: string
+        file:
+          type: string
+          description: Base64 encoded file
+        file_icon:
+          type: string
+          description: Base64 encoded file
+
+    AdBannerHtml:
+      type: object
+      description: Format-specific properties
+      properties:
+        idsize:
+            type: integer
+            description: Size ID
+        content_html:
+            type: string
+            description: HTML-content
+
+    AdBannerVideo:
+      type: object
+      description: Format-specific properties
+      properties:
+        idsize:
+          type: integer
+          description: Size ID
+        file:
+          type: string
+          description: Base64 encoded file
+        source_type:
+          type: string
+          enum: [file, vast]
+        vast_url:
+          type: string
+          description: only needed if source_type=vast
+
+    Site:
+      type: object
+      properties:
+        id:
+          type: integer
+        publisher:
+          type: object
+        name:
+          type: string
+        url:
+          type: string
+        status:
+          type: object
+        category:
+          type: object
+        block_reason:
+          type: object
+          description: Block reason if status is rejected
+        is_active:
+          type: boolean
+        zones:
+          type: array
+          items:
+            type: object
+        created_at:
+          type: string
+        updated_at:
+          type: string
+        verified_at:
+          type: string
+
+    SiteRequest:
+      type: object
+      required:
+        - name
+        - url
+        - idcategory
+        - idpublisher
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+        idcategory:
+          type: integer
+        idpublisher:
+          type: integer
+        is_active:
+          type: boolean
+        idstatus:
+          type: integer
+          enum: [3500, 3510, 3520]
+          description: >
+            Moderation statuses:
+             * 3520 - Pending
+             * 3500 - Approved
+             * 3510 - Rejected
+        idblockreason:
+          type: integer
+          enum: [1, 2, 100]
+          description: >
+            Block reason:
+             * 1 - Low traffic quality
+             * 2 - Illegal content
+             * 100 - Custom
+        block_reason:
+          type: string
+
+    PubSiteRequest:
+      type: object
+      required:
+        - name
+        - url
+        - idcategory
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+        idcategory:
+          type: integer
+        is_active:
+          type: boolean
+
+    AssignedAds:
+      type: object
+      properties:
+        assigned_ads:
+          type: array
+          items:
+            type: object
+
+    AssignedZones:
+      type: object
+      properties:
+        assigned_zones:
+          type: array
+          items:
+            type: object
+
+    Zone:
+      type: object
+      properties:
+        id:
+          type: integer
+        site:
+          type: object
+        name:
+          type: string
+        status:
+          type: object
+        is_active:
+          type: boolean
+        format:
+          type: object
+        code:
+          type: array
+          items:
+            type: object
+        revenue_model:
+          type: object
+        revenue_rate:
+          type: number
+        size:
+          type: object
+        width:
+          type: string
+        height:
+          type: string
+        assigned_zones:
+          type: array
+          items:
+            type: object
+        created_at:
+          type: string
+        updated_at:
+          type: string
+
+    ZoneRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        is_active:
+          type: boolean
+        idstatus:
+          type: integer
+          enum: [7000, 7010, 7020]
+          description: >
+            Moderation statuses:
+             * 7010 - Pending
+             * 7000 - Approved
+             * 7020 - Rejected
+        idsize:
+          type: integer
+        idauctiontype:
+          type: integer
+          enum: [0, 1, 2, 3, 4]
+          description: >
+            Auction models:
+              * 0 - Weight (default)
+              * 1 - Rate
+              * 2 - First Rate
+              * 3 - Second Rate
+
+            [Learn more](https://adserver.online/article/auction-models)
+
+        idrevenuemodel:
+          type: integer
+          enum: [1, 2, 3, 4]
+          description: >
+            Revenue models:
+              * 1 - Flat CPM
+              * 2 - Rev. share
+              * 3 - Flat CPC
+              * 4 - Per push subscription
+
+            [Learn more](https://adserver.online/article/how-revenue-and-spend-are-being-calculated)
+        revenue_rate:
+            type: number
+        floor_cpm:
+            type: number
+            description: Available for rev. share model only
+        floor_cpc:
+            type: number
+            description: Available for rev. share model only
+
+    PayoutRequest:
+      type: object
+      required:
+        - iduser
+        - amount
+      properties:
+        iduser:
+          type: integer
+        amount:
+          type: number
+        referral_reward:
+           type: boolean
+           default: true
+           description: Whether to pay a referral fee or not (when applicable)
+        descr:
+          type: string
+        idstatus:
+          type: integer
+          enum: [5000, 5010, 5020]
+          description: >
+            Statuses:
+               * 5000 - Pending
+               * 5010 - Completed
+               * 5020 - Cancelled
+
+    PubPayoutRequest:
+      type: object
+      required:
+        - amount
+      properties:
+        amount:
+          type: number
+
+    PubZoneRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        is_active:
+          type: boolean
+        idsize:
+          type: integer
+
+    UserBase:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        role:
+          type: object
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        messenger:
+          type: object
+        timezone:
+          type: string
+        is_active:
+          type: boolean
+        allow_login:
+          type: boolean
+        campaigns_post_moderation:
+          type: boolean
+        referral:
+          type: object
+        payout:
+          type: object
+        created_at:
+          type: string
+        updated_at:
+          type: string
+
+    UserRequest:
+      type: object
+      required:
+        - name
+        - email
+        - idrole
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        messenger_type:
+          type: string
+        messenger_id:
+          type: string
+        timezone:
+          type: string
+        date_format:
+          type: string
+        week_first_day:
+          type: integer
+          enum: [1, 7]
+        decimal_separator:
+          type: integer
+        thousand_separator:
+          type: integer
+        is_active:
+          type: boolean
+        send_password:
+          type: boolean
+          description: Generate and send password to user email
+        allow_login:
+          type: boolean
+        campaigns_post_moderation:
+          type: boolean
+        idrole:
+          type: integer
+          enum: [2, 3, 4]
+          description: >
+            Roles:
+             * 2 - Manager
+             * 3 - Advertiser
+             * 4 - Publisher
+        idpayoutmethod:
+           type: integer
+        payout_account:
+           type: string
+        referral_code:
+          type: string
+        reg_ip:
+          description: IP address that user used for registration. Can be set on user creation only.
+          type: string
+
+    StatsItem:
+      type: object
+      properties:
+        dimension:
+          type: string
+        iddimension:
+          type: integer
+          nullable: true
+        impressions:
+          type: integer
+        impressions_unique:
+          type: integer
+        clicks:
+          type: integer
+        clicks_unique:
+          type: integer
+        conversions:
+          type: integer
+        cpm:
+          type: number
+        cpc:
+          type: number
+        cpa:
+          type: number
+        amount:
+          type: number
+        amount_pub:
+          type: number
+      example:
+        dimension: '2020-01-01'
+        iddimension: null
+        impressions: 3421
+        impressions_unique: 2401
+        clicks: 474
+        clicks_unique: 265
+        conversions: 0
+        cpm: 10.5
+        cpc: 0
+        cpa: 0
+        amount: 35.9205
+        amount_pub: 17.96025
+
+    StatsCustomRtbItem:
+      type: object
+      properties:
+        date:
+          type: string
+        tagId:
+          type: string
+        impressions:
+          type: integer
+        clicks:
+          type: integer
+        revenue:
+          type: number
+      example:
+        date: '2020-01-01'
+        tagId: 'A2423F1C'
+        impressions: 3421
+        clicks: 474
+        revenue: 17.96025
+
+    EventsItem:
+      type: object
+
+    AdvDict:
+      type: object
+      properties:
+        ad_formats:
+          type: object
+          additionalProperties:
+            type: string
+        categories:
+          type: object
+          additionalProperties:
+            type: string
+        price_models:
+          type: object
+          additionalProperties:
+            type: string
+
+    PubDict:
+      type: object
+      properties:
+        zone_formats:
+          type: object
+          additionalProperties:
+            type: string
+        categories:
+          type: object
+          additionalProperties:
+            type: string
+        payout_methods:
+          type: object
+          additionalProperties:
+            type: string
+
+    Dict:
+      type: object
+      properties:
+        ad_formats:
+          type: object
+          additionalProperties:
+            type: string
+        zone_formats:
+          type: object
+          additionalProperties:
+            type: string
+        price_models:
+          type: object
+          additionalProperties:
+            type: string
+        revenue_models:
+          type: object
+          additionalProperties:
+            type: string
+        transaction_types:
+          type: object
+          additionalProperties:
+            type: string
+        size:
+          type: object
+          additionalProperties:
+            type: string
+        categories:
+          type: object
+          additionalProperties:
+            type: string
+        countries:
+          type: object
+          additionalProperties:
+            type: string
+        payout_methods:
+          type: object
+          additionalProperties:
+            type: string
+        targeting_modes:
+          type: object
+          additionalProperties:
+            type: string
+        devices:
+          type: object
+          additionalProperties:
+            type: string
+        os:
+          type: object
+          additionalProperties:
+            type: string
+        browsers:
+          type: object
+          additionalProperties:
+            type: string
+
+    Payout:
+      type: object
+      properties:
+        id:
+          type: integer
+        user:
+          $ref: '#/components/schemas/UserBase'
+        method:
+          type: string
+        account:
+          type: string
+        status:
+          type: object
+        amount:
+          type: number
+        descr:
+          type: string
+        created_at:
+          type: string
+        updated_at:
+          type: string
+
+    Referral:
+      type: object
+      properties:
+        id:
+          type: integer
+        user:
+          $ref: '#/components/schemas/UserBase'
+        ref_user:
+          type: object
+        percent:
+          type: number
+        revenue:
+          type: number
+        is_active:
+          type: boolean
+        is_expired:
+          type: boolean
+        created_at:
+          type: string
+
+    Payment:
+      type: object
+      properties:
+        id:
+          type: integer
+        user:
+          $ref: '#/components/schemas/UserBase'
+        status:
+          type: object
+        amount:
+          type: number
+        descr:
+          type: string
+        created_at:
+          type: string
+        updated_at:
+          type: string
+
+    PaymentRequest:
+      type: object
+      required:
+        - iduser
+        - amount
+      properties:
+        iduser:
+          type: integer
+        idstatus:
+          type: integer
+          enum: [1000, 1010, 1020]
+          description: >
+            Statuses:
+             * 1000 - Pending
+             * 1010 - Completed
+             * 1020 - Cancelled
+        amount:
+          type: number
+        referral_reward:
+           type: boolean
+           default: true
+           description: Whether to pay a referral fee or not (when applicable)
+        descr:
+          type: string
+        created_datetime:
+          type: string
+          description: "Format: YYYY-MM-DD HH:MM:SS"
+
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: integer
+        user:
+          $ref: '#/components/schemas/UserBase'
+        type:
+          type: object
+        direction:
+          type: string
+        amount:
+          type: number
+        descr:
+          type: string
+        created_at:
+          type: string
+        updated_at:
+          type: string
+
+    TransactionRequest:
+      type: object
+      required:
+        - iduser
+        - idtransactiontype
+        - amount
+        - description
+      properties:
+        iduser:
+          type: integer
+        idtransactiontype:
+          type: integer
+          enum: [1, 2, 3, 4, 5, 6, 8, 9, 10, 11]
+          description: >
+            Types:
+              * 1 - Deposit
+              * 2 - Billing
+              * 3 - Payout
+              * 4 - Refund
+              * 5 - Adv.other IN
+              * 6 - Adv.other OUT
+              * 8 - Revenue
+              * 9 - Pub.reward
+              * 10 - Pub.other IN
+              * 11 - Pub.other OUT
+
+        amount:
+          type: number
+        descr:
+          type: string
+        created_datetime:
+          type: string
+          description: "Format: YYYY-MM-DD HH:MM:SS"
+
+    Statement:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/UserBase'
+        deposit:
+          type: number
+        spend:
+          type: number
+        revenue:
+          type: number
+        payout:
+          type: number
+        reward:
+          type: number
+        advert_other_in:
+          type: number
+        advert_other_out:
+          type: number
+        publish_other_in:
+          type: number
+        publish_other_out:
+          type: number
+        advert_balance:
+          type: number
+        publish_balance:
+          type: number
+        stats_spend:
+          type: number
+        stats_revenue:
+          type: number
