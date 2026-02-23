@@ -3,6 +3,15 @@ const express = require('express');
 const { proxy, adserver } = require('../src/proxy');
 
 const app = express();
+
+// CORS — allow any origin (must come before all routes)
+app.use((req, res, next) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
 app.use(express.json());
 
 // ── Users ────────────────────────────────────────────────────────────────────
