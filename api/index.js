@@ -54,6 +54,10 @@ app.post('/sites', (req, res) => proxy(req, res, { path: '/site' }));
 app.get('/sites/:id', (req, res) => proxy(req, res, { path: `/site/${req.params.id}` }));
 app.put('/sites/:id', (req, res) => proxy(req, res, { path: `/site/${req.params.id}` }));
 app.delete('/sites/:id', (req, res) => proxy(req, res, { path: `/site/${req.params.id}` }));
+// List zones of a site (shortcut for GET /zones?idsite=:id)
+app.get('/sites/:id/zones', (req, res) =>
+  proxy(req, res, { path: '/zone', params: { idsite: req.params.id } })
+);
 
 // ── Zones ────────────────────────────────────────────────────────────────────
 // GET /zones?idsite=123
@@ -85,6 +89,138 @@ app.get('/transactions/:id', (req, res) => proxy(req, res, { path: `/transaction
 
 // ── Dictionaries ─────────────────────────────────────────────────────────────
 app.get('/dict', (req, res) => proxy(req, res, { path: '/dict' }));
+
+// ── Viewability script (served as JS) ────────────────────────────────────────
+// GET /v.js?z=:zoneId — serves the tracking script for a given zone
+app.get('/v.js', (req, res) => {
+  const zoneId = req.query.z;
+  if (!zoneId) return res.status(400).type('application/javascript').send('/* missing ?z= */');
+
+  const beaconUrl = process.env.API_BASE_URL || `${req.protocol}://${req.get('host')}`;
+
+  const js = `(function(){
+var z='${zoneId}',B='${beaconUrl}/viewability',T=0.5,M=1000;
+var el=document.getElementById('goon-zone-'+z);
+if(!el||!window.IntersectionObserver)return;
+var tm=null,st=null,fired=false;
+function send(v,p,ms){
+  if(fired)return;fired=true;
+  var d=JSON.stringify({zone:z,url:location.href,referrer:document.referrer||null,user_agent:navigator.userAgent,viewed:v,visible_pct:Math.round(p*100),elapsed_ms:ms,ts:new Date().toISOString()});
+  if(navigator.sendBeacon){navigator.sendBeacon(B,new Blob([d],{type:'application/json'}));}
+  else{var x=new XMLHttpRequest();x.open('POST',B,true);x.setRequestHeader('Content-Type','application/json');x.send(d);}
+}
+var obs=new IntersectionObserver(function(es){
+  var e=es[0];
+  if(e.isIntersecting&&e.intersectionRatio>=T){if(!tm){st=Date.now();tm=setTimeout(function(){send(true,e.intersectionRatio,Date.now()-st);},M);}}
+  else{if(tm){clearTimeout(tm);tm=null;}}
+},{threshold:[0,T,1]});
+var t=setInterval(function(){if(el.children.length>0||el.innerHTML.trim()!==''){clearInterval(t);obs.observe(el);}},200);
+setTimeout(function(){clearInterval(t);obs.observe(el);},3000);
+})();`;
+
+  res.set('Cache-Control', 'public, max-age=3600');
+  res.type('application/javascript').send(js);
+});
+
+// ── Zone tag generator ────────────────────────────────────────────────────────
+// GET /zones/:id/tag — returns the compact HTML tag ready to paste
+app.get('/zones/:id/tag', async (req, res) => {
+  const zoneId = req.params.id;
+  const base   = process.env.API_BASE_URL || `${req.protocol}://${req.get('host')}`;
+
+  let zoneName = '', zoneWidth = '', zoneHeight = '';
+  try {
+    const zr = await adserver.get(`/zone/${zoneId}`);
+    zoneName   = zr.data.name   || '';
+    zoneWidth  = zr.data.width  || '';
+    zoneHeight = zr.data.height || '';
+  } catch (_) {}
+
+  const label = [zoneName, zoneWidth && zoneHeight ? `${zoneWidth}x${zoneHeight}` : ''].filter(Boolean).join(' / ');
+
+  const tag = `<!-- Goonadgroup's Ad Server${label ? ' / ' + label : ''} --><ins class="ins-zone" data-zone="${zoneId}" id="goon-zone-${zoneId}"></ins><script data-cfasync="false" async src="https://media.aso1.net/js/code.min.js"></script><script async src="${base}/v.js?z=${zoneId}"></script><!-- /Goonadgroup's Ad Server -->`;
+
+  res.type('text/plain').send(tag);
+});
+
+// ── Workflow guide (4 steps) ──────────────────────────────────────────────────
+// GET /workflow/setup — returns the full setup guide with all required endpoints
+app.get('/workflow/setup', (req, res) => {
+  const base = process.env.API_BASE_URL || `${req.protocol}://${req.get('host')}`;
+  res.json({
+    description: 'Follow these 4 steps to create a site, zones, campaign and ads.',
+    steps: [
+      {
+        step: 1,
+        title: 'Create a Site',
+        description: 'A site is a collection of zones. Each site must have at least one zone.',
+        endpoints: {
+          list_sites:     { method: 'GET',    url: `${base}/sites` },
+          create_site:    { method: 'POST',   url: `${base}/sites`,
+            body_example: { name: 'My Site', url: 'https://example.com', idcategory: 1, idpublisher: 123 } },
+          get_site:       { method: 'GET',    url: `${base}/sites/:id` },
+          update_site:    { method: 'PUT',    url: `${base}/sites/:id` },
+          delete_site:    { method: 'DELETE', url: `${base}/sites/:id` },
+          available_categories: { method: 'GET', url: `${base}/dict`, note: 'Check site_categories field' },
+        },
+      },
+      {
+        step: 2,
+        title: 'Create Zones and Get Ad Tags',
+        description: 'A zone is an area on a site where ads are displayed. After creating a zone, get the ready-to-paste HTML tag.',
+        endpoints: {
+          list_zones:     { method: 'GET',    url: `${base}/sites/:siteId/zones` },
+          create_zone:    { method: 'POST',   url: `${base}/zones?idsite=:siteId&idformat=:formatId`,
+            body_example: { name: 'Banner 300x250', idsize: 2, is_active: true } },
+          get_zone:       { method: 'GET',    url: `${base}/zones/:id` },
+          update_zone:    { method: 'PUT',    url: `${base}/zones/:id` },
+          delete_zone:    { method: 'DELETE', url: `${base}/zones/:id` },
+          get_tag:        { method: 'GET',    url: `${base}/zones/:id/tag`,
+            note: 'Returns the instrumented HTML tag with viewability tracking. Paste into the publisher site.' },
+          available_formats: { method: 'GET', url: `${base}/dict`, note: 'Check zone_formats field' },
+        },
+      },
+      {
+        step: 3,
+        title: 'Create a Campaign',
+        description: 'A campaign is a set of related ads. Each campaign must have at least one ad.',
+        endpoints: {
+          list_campaigns:  { method: 'GET',    url: `${base}/campaigns` },
+          create_campaign: { method: 'POST',   url: `${base}/campaigns`,
+            body_example: { name: 'My Campaign', idadvertiser: 123, idpricemodel: 1, rate: 1.5, start_date: '2026-01-01', finish_date: '2026-12-31' } },
+          get_campaign:    { method: 'GET',    url: `${base}/campaigns/:id` },
+          update_campaign: { method: 'PUT',    url: `${base}/campaigns/:id` },
+          delete_campaign: { method: 'DELETE', url: `${base}/campaigns/:id` },
+          price_models: { '1': 'CPM', '2': 'CPC', '3': 'CPA', '4': 'CPUC', '5': 'CPUM', '6': 'CPV' },
+        },
+      },
+      {
+        step: 4,
+        title: 'Create Ads and Assign to Zones',
+        description: 'An ad is the visual/audio content. The ad format must match the zone format.',
+        endpoints: {
+          list_ads:        { method: 'GET',    url: `${base}/campaigns/:campaignId/ads` },
+          create_ad:       { method: 'POST',   url: `${base}/ads?idformat=:formatId`,
+            body_example: { idcampaign: 123, name: 'My Ad', url: 'https://example.com', is_active: true, details: { idsize: 2, file: '<base64-encoded-file>' } } },
+          get_ad:          { method: 'GET',    url: `${base}/ads/:id` },
+          update_ad:       { method: 'PUT',    url: `${base}/ads/:id` },
+          delete_ad:       { method: 'DELETE', url: `${base}/ads/:id` },
+          assign_ad_to_zones: { method: 'POST', url: `${base}/ads/assign?id=:adId`,
+            body_example: { zones: [160272, 160277] },
+            note: 'Assign one ad to one or more zones. Formats must match.' },
+          assign_zone_to_ads: { method: 'POST', url: `${base}/zones/assign?id=:zoneId`,
+            body_example: { ads: [315734, 315735] },
+            note: 'Alternatively, assign one zone to one or more ads.' },
+          available_formats: { method: 'GET', url: `${base}/dict`, note: 'Check ad_formats field' },
+        },
+      },
+    ],
+    bonus: {
+      campaign_report: { method: 'GET', url: `${base}/campaigns/:id/report?dateBegin=YYYY-MM-DD&dateEnd=YYYY-MM-DD`,
+        note: 'Full report: Campaign → Site → Zone → Ad by day with all metrics.' },
+    },
+  });
+});
 
 // ── Debug: raw stats (temporary) ─────────────────────────────────────────────
 // GET /debug/stats?dateBegin=&dateEnd=&idcampaign=&group=day&group2=site
@@ -242,18 +378,41 @@ app.use((req, res, next) => {
   next();
 });
 
-app.post('/viewability', (req, res) => {
-  const { zone, url, viewed, visible_pct, elapsed_ms, ts } = req.body || {};
+app.post('/viewability', async (req, res) => {
+  res.sendStatus(204); // responde imediatamente, não bloqueia o publisher
+
+  const { zone, url, referrer, user_agent, viewed, visible_pct, elapsed_ms, ts } = req.body || {};
+
+  // IP: X-Forwarded-For (Vercel/proxies) ou socket remoto
+  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
+          || req.socket.remoteAddress
+          || null;
+
+  // Resolve geo via ip-api.com (gratuito, sem key, 45 req/min)
+  let geo = null;
+  if (ip && ip !== '127.0.0.1' && ip !== '::1') {
+    try {
+      const axios  = require('axios');
+      const geoRes = await axios.get(`http://ip-api.com/json/${ip}`, {
+        params: { fields: 'country,countryCode,regionName,city,lat,lon,isp', lang: 'pt-BR' },
+      });
+      if (geoRes.data.country) geo = geoRes.data;
+    } catch (_) { /* geo opcional, não quebra o fluxo */ }
+  }
+
   console.log(JSON.stringify({
-    event: 'viewability',
+    event:       'viewability',
     zone,
     url,
-    viewed: !!viewed,
+    referrer:    referrer || null,
+    user_agent:  user_agent || null,
+    viewed:      !!viewed,
     visible_pct,
     elapsed_ms,
-    ts: ts || new Date().toISOString(),
+    ts:          ts || new Date().toISOString(),
+    ip,
+    geo,
   }));
-  res.sendStatus(204);
 });
 
 // ── Health ───────────────────────────────────────────────────────────────────
