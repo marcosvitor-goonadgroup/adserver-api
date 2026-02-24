@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const { proxy, adserver } = require('../src/proxy');
+const { insertViewability } = require('../src/bigquery');
 
 const app = express();
 
@@ -371,13 +372,6 @@ app.get('/campaigns/:id/report', async (req, res) => {
 });
 
 // ── Viewability ──────────────────────────────────────────────────────────────
-app.use((req, res, next) => {
-  res.set('Access-Control-Allow-Origin', '*');
-  res.set('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.sendStatus(204);
-  next();
-});
-
 app.post('/viewability', async (req, res) => {
   res.sendStatus(204); // responde imediatamente, não bloqueia o publisher
 
@@ -400,19 +394,32 @@ app.post('/viewability', async (req, res) => {
     } catch (_) { /* geo opcional, não quebra o fluxo */ }
   }
 
-  console.log(JSON.stringify({
-    event:       'viewability',
-    zone,
-    url,
-    referrer:    referrer || null,
-    user_agent:  user_agent || null,
-    viewed:      !!viewed,
-    visible_pct,
-    elapsed_ms,
-    ts:          ts || new Date().toISOString(),
-    ip,
-    geo,
-  }));
+  const row = {
+    zone:         String(zone ?? ''),
+    url:          String(url  ?? ''),
+    referrer:     referrer    || null,
+    user_agent:   user_agent  || null,
+    viewed:       !!viewed,
+    visible_pct:  Number(visible_pct) || 0,
+    elapsed_ms:   Number(elapsed_ms)  || 0,
+    ts:           ts || new Date().toISOString(),
+    ip:           ip || null,
+    country:      geo?.country      || null,
+    country_code: geo?.countryCode  || null,
+    region:       geo?.regionName   || null,
+    city:         geo?.city         || null,
+    lat:          geo?.lat          ?? null,
+    lon:          geo?.lon          ?? null,
+    isp:          geo?.isp          || null,
+  };
+
+  console.log(JSON.stringify({ event: 'viewability', ...row }));
+
+  try {
+    await insertViewability(row);
+  } catch (err) {
+    console.error('BigQuery insert error:', err.message);
+  }
 });
 
 // ── Health ───────────────────────────────────────────────────────────────────
