@@ -115,9 +115,13 @@ var obs=new IntersectionObserver(function(es){
   else{if(tm){clearTimeout(tm);tm=null;}}
 },{threshold:[0,T,1]});
 function findEl(){
+  // 1) div criado pelo adserver: class="... zid-{z} ..."
+  var byClass=document.querySelector('.zid-'+z);
+  if(byClass)return byClass;
+  // 2) ins original (antes de ser processado)
   var ins=document.querySelector('ins[data-zone="'+z+'"]');
-  if(ins&&ins.parentElement&&ins.parentElement!==document.body)return ins.parentElement;
   if(ins)return ins;
+  // 3) fallback pelo id original
   return document.getElementById('goon-zone-'+z);
 }
 var attempts=0,t=setInterval(function(){

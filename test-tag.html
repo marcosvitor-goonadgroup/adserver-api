@@ -79,24 +79,33 @@
 
   addLog('Página carregada. Role para baixo para ver o banner.', 'info');
 
+  // Dump do DOM da área do banner em vários momentos
+  function dumpBannerArea(label) {
+    const area = document.getElementById('banner-area');
+    if (!area) return;
+    addLog('--- DOM [' + label + '] ---', 'info');
+
+    // Todos os elementos dentro de banner-area
+    const all = area.querySelectorAll('*');
+    all.forEach(el => {
+      const attrs = Array.from(el.attributes).map(a => a.name + '="' + a.value + '"').join(' ');
+      addLog('  <' + el.tagName.toLowerCase() + (attrs ? ' ' + attrs : '') + '>', 'info');
+    });
+
+    if (all.length === 0) addLog('  (vazio)', 'warn');
+  }
+
   window.addEventListener('load', () => {
-    setTimeout(() => {
-      const vjs = document.querySelector('script[src*="v.js"]');
-      addLog(vjs ? 'v.js carregado: ' + vjs.src : 'AVISO: script v.js não encontrado', vjs ? 'info' : 'err');
+    const vjs = document.querySelector('script[src*="v.js"]');
+    addLog(vjs ? 'v.js tag: ' + vjs.src : 'AVISO: script v.js não encontrado', vjs ? 'info' : 'err');
 
-      // Inspeciona o que o adserver criou ao redor do <ins>
-      const ins = document.querySelector('ins[data-zone="160768"]');
-      if (ins) {
-        const parent = ins.parentElement;
-        addLog('ins[data-zone] encontrado. parentElement: <' + parent.tagName.toLowerCase() + ' id="' + (parent.id||'') + '" class="' + (parent.className||'') + '">', 'info');
-        addLog('innerHTML do parent (primeiros 120 chars): ' + parent.innerHTML.substring(0, 120), 'info');
-      } else {
-        addLog('ERRO: ins[data-zone="160768"] não encontrado no DOM', 'err');
-      }
+    // Dump imediato
+    dumpBannerArea('0ms');
 
-      const byId = document.getElementById('goon-zone-160768');
-      addLog(byId ? 'getElementById: encontrado' : 'getElementById: NÃO encontrado (adserver removeu o id)', byId ? 'info' : 'warn');
-    }, 1500);
+    // Dumps após delays para ver o que o adserver cria
+    [300, 800, 1500, 3000].forEach(ms => {
+      setTimeout(() => dumpBannerArea(ms + 'ms'), ms);
+    });
   });
 </script>
 
