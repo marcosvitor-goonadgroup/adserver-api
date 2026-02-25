@@ -101,8 +101,7 @@ app.get('/v.js', (req, res) => {
 
   const js = `(function(){
 var z='${zoneId}',B='${beaconUrl}/viewability',T=0.5,M=1000;
-var el=document.getElementById('goon-zone-'+z);
-if(!el||!window.IntersectionObserver)return;
+if(!window.IntersectionObserver)return;
 var tm=null,st=null,fired=false;
 function send(v,p,ms){
   if(fired)return;fired=true;
@@ -115,8 +114,18 @@ var obs=new IntersectionObserver(function(es){
   if(e.isIntersecting&&e.intersectionRatio>=T){if(!tm){st=Date.now();tm=setTimeout(function(){send(true,e.intersectionRatio,Date.now()-st);},M);}}
   else{if(tm){clearTimeout(tm);tm=null;}}
 },{threshold:[0,T,1]});
-var t=setInterval(function(){if(el.children.length>0||el.innerHTML.trim()!==''){clearInterval(t);obs.observe(el);}},200);
-setTimeout(function(){clearInterval(t);obs.observe(el);},3000);
+function findEl(){
+  var ins=document.querySelector('ins[data-zone="'+z+'"]');
+  if(ins&&ins.parentElement&&ins.parentElement!==document.body)return ins.parentElement;
+  if(ins)return ins;
+  return document.getElementById('goon-zone-'+z);
+}
+var attempts=0,t=setInterval(function(){
+  attempts++;
+  var el=findEl();
+  if(el){clearInterval(t);obs.observe(el);return;}
+  if(attempts>=30)clearInterval(t);
+},200);
 })();`;
 
   res.set('Cache-Control', 'public, max-age=3600');

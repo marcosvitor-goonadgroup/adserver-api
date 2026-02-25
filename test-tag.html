@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Teste de Tag — Zone 160768</title>
+  <style>
+    body { font-family: monospace; padding: 20px; background: #f5f5f5; margin: 0; }
+    h2 { margin-bottom: 4px; }
+    #log { background: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: 6px; min-height: 80px; white-space: pre-wrap; font-size: 13px; margin-top: 16px; max-height: 300px; overflow-y: auto; }
+    .ok   { color: #4ec9b0; }
+    .err  { color: #f44747; }
+    .info { color: #dcdcaa; }
+    .warn { color: #ce9178; }
+    #spacer { height: 150vh; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 20px; color: #aaa; font-size: 14px; }
+    #banner-area { background: #fff; border: 2px dashed #888; padding: 20px; text-align: center; min-height: 260px; }
+    #scroll-hint { background: #fffbe6; border: 1px solid #f0c040; padding: 10px 16px; border-radius: 4px; margin-bottom: 16px; font-size: 14px; }
+  </style>
+</head>
+<body>
+
+<h2>Teste de Viewability — Zone 160768</h2>
+<div id="scroll-hint">
+  ↓ Role a página para baixo. Quando o banner ficar visível por <strong>1 segundo</strong>, nosso beacon dispara para <code>adserver-api.vercel.app/viewability</code>.
+</div>
+
+<div id="log">Aguardando eventos...</div>
+<div id="spacer">↓ continue rolando ↓</div>
+
+<div id="banner-area">
+  <p style="color:#888; margin:0 0 12px;">Banner Zone 160768</p>
+
+  <!-- Goonadgroup's Ad Server / Banner - 300x250 / 300x250 -->
+  <ins class="ins-zone" data-zone="160768" id="goon-zone-160768"></ins>
+  <script data-cfasync="false" async src="https://media.aso1.net/js/code.min.js"></script>
+  <script async src="https://adserver-api.vercel.app/v.js?z=160768"></script>
+  <!-- /Goonadgroup's Ad Server -->
+</div>
+
+<div style="height:50vh"></div>
+
+<script>
+  const log = document.getElementById('log');
+  let firstLog = true;
+
+  function addLog(msg, cls) {
+    if (firstLog) { log.innerHTML = ''; firstLog = false; }
+    const line = document.createElement('div');
+    line.className = cls || '';
+    line.textContent = '[' + new Date().toISOString().substring(11,23) + '] ' + msg;
+    log.appendChild(line);
+    log.scrollTop = log.scrollHeight;
+    console.log(msg);
+  }
+
+  // Intercepta sendBeacon para diferenciar nosso beacon do beacon do adserver
+  const _beacon = navigator.sendBeacon.bind(navigator);
+  navigator.sendBeacon = function(url, data) {
+    if (url.includes('adserver-api.vercel.app')) {
+      // NOSSO beacon
+      addLog('✓ NOSSO beacon disparado → ' + url, 'ok');
+      if (data instanceof Blob) {
+        data.text().then(t => addLog('  Payload: ' + t, 'info'));
+      }
+    } else {
+      // Beacon do adserver (trkr.aso1.net etc.)
+      addLog('→ Beacon adserver: ' + new URL(url).pathname + new URL(url).search.substring(0,60) + '...', 'warn');
+    }
+    return _beacon(url, data);
+  };
+
+  // Também intercepta XMLHttpRequest como fallback
+  const _open = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function(method, url) {
+    if (typeof url === 'string' && url.includes('adserver-api.vercel.app/viewability')) {
+      addLog('✓ NOSSO beacon via XHR → ' + url, 'ok');
+    }
+    return _open.apply(this, arguments);
+  };
+
+  addLog('Página carregada. Role para baixo para ver o banner.', 'info');
+
+  window.addEventListener('load', () => {
+    setTimeout(() => {
+      const vjs = document.querySelector('script[src*="v.js"]');
+      addLog(vjs ? 'v.js carregado: ' + vjs.src : 'AVISO: script v.js não encontrado', vjs ? 'info' : 'err');
+
+      // Inspeciona o que o adserver criou ao redor do <ins>
+      const ins = document.querySelector('ins[data-zone="160768"]');
+      if (ins) {
+        const parent = ins.parentElement;
+        addLog('ins[data-zone] encontrado. parentElement: <' + parent.tagName.toLowerCase() + ' id="' + (parent.id||'') + '" class="' + (parent.className||'') + '">', 'info');
+        addLog('innerHTML do parent (primeiros 120 chars): ' + parent.innerHTML.substring(0, 120), 'info');
+      } else {
+        addLog('ERRO: ins[data-zone="160768"] não encontrado no DOM', 'err');
+      }
+
+      const byId = document.getElementById('goon-zone-160768');
+      addLog(byId ? 'getElementById: encontrado' : 'getElementById: NÃO encontrado (adserver removeu o id)', byId ? 'info' : 'warn');
+    }, 1500);
+  });
+</script>
+
+</body>
+</html>
