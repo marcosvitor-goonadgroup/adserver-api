@@ -3,7 +3,9 @@
     "allow": [
       "Bash(npm install:*)",
       "Bash(node -e:*)",
-      "Bash(start \"\" \"c:/Users/marco/OneDrive/Desktop/GOON/AdDesk/api-adserver/test-tag.html\")"
+      "Bash(start \"\" \"c:/Users/marco/OneDrive/Desktop/GOON/AdDesk/api-adserver/test-tag.html\")",
+      "Bash(curl:*)",
+      "Bash(python3:*)"
     ]
   }
 }

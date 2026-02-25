@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>Teste de Tag — Zone 160781</title>
+  <title>Teste de Tag — Zone 160768</title>
   <style>
     body { font-family: monospace; padding: 20px; background: #f5f5f5; margin: 0; }
     h2 { margin-bottom: 4px; }
@@ -18,7 +18,7 @@
 </head>
 <body>
 
-<h2>Teste de Viewability — Zone 160781 (VAST)</h2>
+<h2>Teste de Viewability — Zone 160768 (Display)</h2>
 <div id="scroll-hint">
   ↓ Role a página para baixo. Quando o banner ficar visível por <strong>1 segundo</strong>, nosso beacon dispara para <code>adserver-api.vercel.app/viewability</code>.
 </div>
@@ -27,12 +27,12 @@
 <div id="spacer">↓ continue rolando ↓</div>
 
 <div id="banner-area">
-  <p style="color:#888; margin:0 0 12px;">Banner Zone 160781</p>
+  <p style="color:#888; margin:0 0 12px;">Banner Zone 160768</p>
 
-  <!-- Goonadgroup's Ad Server / VAST -->
-  <ins class="ins-zone" data-zone="160781" id="goon-zone-160781"></ins>
+  <!-- Goonadgroup's Ad Server -->
+  <ins class="ins-zone" data-zone="160768" id="goon-zone-160768"></ins>
   <script data-cfasync="false" async src="https://media.aso1.net/js/code.min.js"></script>
-  <script async src="https://adserver-api.vercel.app/v.js?z=160781"></script>
+  <script async src="https://adserver-api.vercel.app/v.js?z=160768"></script>
   <!-- /Goonadgroup's Ad Server -->
 </div>
 
@@ -75,13 +75,37 @@
     return _beacon(url, data);
   };
 
-  // Também intercepta XMLHttpRequest como fallback
+  // Intercepta XMLHttpRequest — captura todos os requests do adserver
   const _open = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function(method, url) {
-    if (typeof url === 'string' && url.includes('adserver-api.vercel.app/viewability')) {
-      addLog('✓ NOSSO beacon via XHR → ' + url, 'ok');
+    if (typeof url === 'string') {
+      if (url.includes('adserver-api.vercel.app/viewability')) {
+        addLog('✓ NOSSO beacon via XHR → ' + url, 'ok');
+      } else if (url.includes('aso1.net')) {
+        try {
+          const u = new URL(url, location.href);
+          const params = ['aid','cid','sid','zid','idad','idcampaign','idsite','idzone','type','event','format'];
+          const found = params.filter(p => u.searchParams.has(p)).map(p => p+'='+u.searchParams.get(p));
+          addLog('→ XHR [' + u.hostname + u.pathname + '] ' + (found.join(', ') || '(sem params)'), 'warn');
+        } catch(e) { addLog('→ XHR: ' + url.substring(0,100), 'warn'); }
+      }
     }
     return _open.apply(this, arguments);
+  };
+
+  // Intercepta fetch — captura chamadas do adserver via fetch API
+  const _fetch = window.fetch;
+  window.fetch = function(input, init) {
+    const url = typeof input === 'string' ? input : (input?.url || '');
+    if (url.includes('aso1.net')) {
+      try {
+        const u = new URL(url, location.href);
+        const params = ['aid','cid','sid','zid','idad','idcampaign','idsite','idzone','type','event','format'];
+        const found = params.filter(p => u.searchParams.has(p)).map(p => p+'='+u.searchParams.get(p));
+        addLog('→ fetch [' + u.hostname + u.pathname + '] ' + (found.join(', ') || '(sem params)'), 'warn');
+      } catch(e) { addLog('→ fetch: ' + url.substring(0,100), 'warn'); }
+    }
+    return _fetch.apply(this, arguments);
   };
 
   addLog('Página carregada. Role para baixo para ver o banner.', 'info');

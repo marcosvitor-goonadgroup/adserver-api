@@ -199,8 +199,24 @@ app.get('/zones/:id/tag', async (req, res) => {
     const zoneName   = zoneData?.name   || '';
     const zoneWidth  = zoneData?.width  || '';
     const zoneHeight = zoneData?.height || '';
+    const formatId   = zoneData?.format?.id;
     const label = [zoneName, zoneWidth && zoneHeight ? `${zoneWidth}x${zoneHeight}` : ''].filter(Boolean).join(' / ');
-    // ad_id e campaign_id são lidos do DOM em runtime pelo v.js — não precisam estar na URL
+
+    // VAST zones (format id 18) use a VAST URL, not the display code.min.js tag
+    if (formatId === 18) {
+      const vastUrl = `https://srv.aso1.net/vast?z=${zoneId}`;
+      const tag = `<!-- Goonadgroup's Ad Server${label ? ' / ' + label : ''} / VAST -->
+<!-- VAST URL (pass to your video player): ${vastUrl} -->
+<!-- Example with Video.js + vast-client: -->
+<div id="goon-vast-${zoneId}">
+  <video id="goon-player-${zoneId}" class="video-js vjs-default-skin" controls preload="auto" width="640" height="360" data-zone="${zoneId}"></video>
+</div>
+<script async src="${base}/v.js?z=${zoneId}&vast=1"></script>
+<!-- /Goonadgroup's Ad Server -->`;
+      return res.type('text/plain').send(tag);
+    }
+
+    // Display zones: standard ins tag with code.min.js and viewability script
     const tag = `<!-- Goonadgroup's Ad Server${label ? ' / ' + label : ''} --><ins class="ins-zone" data-zone="${zoneId}" id="goon-zone-${zoneId}"></ins><script data-cfasync="false" async src="https://media.aso1.net/js/code.min.js"></script><script async src="${base}/v.js?z=${zoneId}"></script><!-- /Goonadgroup's Ad Server -->`;
     return res.type('text/plain').send(tag);
   }
