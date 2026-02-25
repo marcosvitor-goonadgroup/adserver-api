@@ -20,18 +20,25 @@ function getBQ() {
 
 /**
  * Insert a viewability event row into BigQuery.
- * Table schema (auto-detected on first insert via insertAll):
- *   zone STRING, url STRING, referrer STRING, user_agent STRING,
- *   viewed BOOL, visible_pct INT64, elapsed_ms INT64, ts TIMESTAMP, ip STRING,
- *   country STRING, country_code STRING, region STRING, city STRING,
- *   lat FLOAT64, lon FLOAT64, isp STRING
  */
 async function insertViewability(row) {
   const dataset = process.env.BIGQUERY_DATASET || 'adserver';
   const table   = process.env.BIGQUERY_TABLE   || 'adserver-data';
-
-  const bq = getBQ();
-  await bq.dataset(dataset).table(table).insert([row]);
+  await getBQ().dataset(dataset).table(table).insert([row]);
 }
 
-module.exports = { insertViewability };
+/**
+ * Insert a VAST tracking event row into BigQuery.
+ * Table: vast-events
+ * Schema: event STRING, zone_id STRING, ad_id STRING, campaign_id STRING,
+ *         site_id STRING, ip STRING, country STRING, country_code STRING,
+ *         region STRING, city STRING, lat FLOAT64, lon FLOAT64, isp STRING,
+ *         ts TIMESTAMP
+ */
+async function insertVastEvent(row) {
+  const dataset = process.env.BIGQUERY_DATASET    || 'adserver';
+  const table   = process.env.BIGQUERY_VAST_TABLE || 'vast-events';
+  await getBQ().dataset(dataset).table(table).insert([row]);
+}
+
+module.exports = { insertViewability, insertVastEvent };

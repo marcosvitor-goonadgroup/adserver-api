@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Teste VAST Wrapper — Zone 160781</title>
+  <style>
+    body { font-family: monospace; padding: 20px; background: #f5f5f5; margin: 0; }
+    h2 { margin-bottom: 4px; }
+    #log { background: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: 6px; min-height: 80px; white-space: pre-wrap; font-size: 13px; margin-top: 16px; max-height: 300px; overflow-y: auto; }
+    .ok   { color: #4ec9b0; }
+    .err  { color: #f44747; }
+    .info { color: #dcdcaa; }
+    .warn { color: #ce9178; }
+    #player-wrap { background: #000; width: 640px; height: 360px; position: relative; margin: 20px 0; }
+    #content-video { width: 640px; height: 360px; }
+    #ad-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+    button { padding: 10px 24px; font-size: 14px; cursor: pointer; margin-right: 8px; }
+  </style>
+</head>
+<body>
+
+<h2>Teste VAST Wrapper — Zone 160781</h2>
+<p style="color:#555; font-size:13px;">
+  VAST URL do wrapper: <code>https://adserver-api.vercel.app/vast?z=160781</code><br>
+  Os eventos (impression, start, quartis, complete) são capturados pelo nosso servidor e inseridos no BigQuery.
+</p>
+
+<div>
+  <button id="btn-play">▶ Carregar e reproduzir anúncio</button>
+  <button id="btn-raw" onclick="window.open('https://adserver-api.vercel.app/vast?z=160781','_blank')">Ver XML VAST</button>
+</div>
+
+<div id="player-wrap">
+  <video id="content-video" controls>
+    <source src="https://storage.googleapis.com/gvabox/media/samples/stock.mp4" type="video/mp4">
+  </video>
+  <div id="ad-container"></div>
+</div>
+
+<div id="log">Aguardando...</div>
+
+<!-- Google IMA SDK -->
+<script src="https://imasdk.googleapis.com/js/sdkloader/ima3.js"></script>
+
+<script>
+  const log = document.getElementById('log');
+  let firstLog = true;
+
+  function addLog(msg, cls) {
+    if (firstLog) { log.innerHTML = ''; firstLog = false; }
+    const line = document.createElement('div');
+    line.className = cls || '';
+    line.textContent = '[' + new Date().toISOString().substring(11,23) + '] ' + msg;
+    log.appendChild(line);
+    log.scrollTop = log.scrollHeight;
+    console.log(msg);
+  }
+
+  // Intercepta fetch/XHR para logar chamadas ao nosso /track
+  const _fetch = window.fetch;
+  window.fetch = function(input, init) {
+    const url = typeof input === 'string' ? input : (input?.url || '');
+    if (url.includes('adserver-api.vercel.app/track')) {
+      try {
+        const u = new URL(url);
+        addLog('✓ /track disparado: e=' + u.searchParams.get('e') + ' aid=' + u.searchParams.get('aid') + ' cid=' + u.searchParams.get('cid'), 'ok');
+      } catch(e) {}
+    }
+    return _fetch.apply(this, arguments);
+  };
+
+  const _xhrOpen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function(method, url) {
+    if (typeof url === 'string' && url.includes('adserver-api.vercel.app/track')) {
+      try {
+        const u = new URL(url);
+        addLog('✓ /track via XHR: e=' + u.searchParams.get('e') + ' aid=' + u.searchParams.get('aid') + ' cid=' + u.searchParams.get('cid'), 'ok');
+      } catch(e) {}
+    }
+    return _xhrOpen.apply(this, arguments);
+  };
+
+  const VAST_URL = 'https://adserver-api.vercel.app/vast?z=160781';
+
+  let adsLoader, adsManager, adDisplayContainer;
+  const video   = document.getElementById('content-video');
+  const adCont  = document.getElementById('ad-container');
+
+  function initIMA() {
+    adDisplayContainer = new google.ima.AdDisplayContainer(adCont, video);
+    adsLoader = new google.ima.AdsLoader(adDisplayContainer);
+
+    adsLoader.addEventListener(google.ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED, onAdsManagerLoaded);
+    adsLoader.addEventListener(google.ima.AdErrorEvent.Type.AD_ERROR, e => {
+      addLog('IMA AdError: ' + e.getError(), 'err');
+    });
+
+    video.addEventListener('ended', () => adsLoader.contentComplete());
+  }
+
+  function requestAds() {
+    adDisplayContainer.initialize();
+    const req = new google.ima.AdsRequest();
+    req.adTagUrl = VAST_URL;
+    req.linearAdSlotWidth  = 640;
+    req.linearAdSlotHeight = 360;
+    req.nonLinearAdSlotWidth  = 640;
+    req.nonLinearAdSlotHeight = 150;
+    addLog('Requisitando VAST: ' + VAST_URL, 'info');
+    adsLoader.requestAds(req);
+  }
+
+  function onAdsManagerLoaded(e) {
+    addLog('AdsManager carregado', 'info');
+    adsManager = e.getAdsManager(video);
+
+    const evts = [
+      google.ima.AdEvent.Type.LOADED,
+      google.ima.AdEvent.Type.STARTED,
+      google.ima.AdEvent.Type.FIRST_QUARTILE,
+      google.ima.AdEvent.Type.MIDPOINT,
+      google.ima.AdEvent.Type.THIRD_QUARTILE,
+      google.ima.AdEvent.Type.COMPLETE,
+      google.ima.AdEvent.Type.IMPRESSION,
+      google.ima.AdEvent.Type.PAUSED,
+      google.ima.AdEvent.Type.RESUMED,
+      google.ima.AdEvent.Type.SKIPPED,
+      google.ima.AdEvent.Type.ALL_ADS_COMPLETED,
+    ];
+
+    evts.forEach(type => {
+      adsManager.addEventListener(type, evt => {
+        addLog('IMA event: ' + evt.type, 'info');
+      });
+    });
+
+    adsManager.addEventListener(google.ima.AdErrorEvent.Type.AD_ERROR, e => {
+      addLog('IMA AdError durante reprodução: ' + e.getError(), 'err');
+      if (adsManager) adsManager.destroy();
+    });
+
+    try {
+      adsManager.init(640, 360, google.ima.ViewMode.NORMAL);
+      adsManager.start();
+    } catch(e) {
+      addLog('adsManager.start() erro: ' + e.message, 'err');
+    }
+  }
+
+  document.getElementById('btn-play').addEventListener('click', () => {
+    if (!adsLoader) initIMA();
+    requestAds();
+  });
+
+  addLog('Página pronta. Clique em "Carregar e reproduzir anúncio".', 'info');
+</script>
+
+</body>
+</html>

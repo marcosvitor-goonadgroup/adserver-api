@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const { proxy, adserver } = require('../src/proxy');
-const { insertViewability } = require('../src/bigquery');
+const { insertViewability, insertVastEvent } = require('../src/bigquery');
 
 const app = express();
 
@@ -202,16 +202,12 @@ app.get('/zones/:id/tag', async (req, res) => {
     const formatId   = zoneData?.format?.id;
     const label = [zoneName, zoneWidth && zoneHeight ? `${zoneWidth}x${zoneHeight}` : ''].filter(Boolean).join(' / ');
 
-    // VAST zones (format id 18) use a VAST URL, not the display code.min.js tag
+    // VAST zones (format id 18) — return our wrapper URL (injects tracking before forwarding to adserver)
     if (formatId === 18) {
-      const vastUrl = `https://srv.aso1.net/vast?z=${zoneId}`;
+      const vastUrl = `${base}/vast?z=${zoneId}`;
       const tag = `<!-- Goonadgroup's Ad Server${label ? ' / ' + label : ''} / VAST -->
-<!-- VAST URL (pass to your video player): ${vastUrl} -->
-<!-- Example with Video.js + vast-client: -->
-<div id="goon-vast-${zoneId}">
-  <video id="goon-player-${zoneId}" class="video-js vjs-default-skin" controls preload="auto" width="640" height="360" data-zone="${zoneId}"></video>
-</div>
-<script async src="${base}/v.js?z=${zoneId}&vast=1"></script>
+<!-- Pass this VAST URL to your video player: -->
+${vastUrl}
 <!-- /Goonadgroup's Ad Server -->`;
       return res.type('text/plain').send(tag);
     }
@@ -453,6 +449,112 @@ app.get('/campaigns/:id/report', async (req, res) => {
   } catch (err) {
     if (err.response) return res.status(err.response.status).json(err.response.data);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ── VAST Wrapper ─────────────────────────────────────────────────────────────
+// GET /vast?z=:zoneId  — proxy the adserver VAST XML injecting our tracking URLs
+app.get('/vast', async (req, res) => {
+  const zoneId = req.query.z || '';
+  if (!zoneId) return res.status(400).type('application/xml').send('<VAST version="3.0"/>');
+
+  const base = process.env.API_BASE_URL || `${req.protocol}://${req.get('host')}`;
+
+  let xml;
+  try {
+    const axios = require('axios');
+    const r = await axios.get(`https://srv.aso1.net/vast?z=${zoneId}`, {
+      headers: { 'User-Agent': req.headers['user-agent'] || 'VAST-Proxy/1.0' },
+      responseType: 'text',
+      timeout: 5000,
+    });
+    xml = r.data;
+  } catch (err) {
+    console.error('VAST fetch error:', err.message);
+    return res.status(502).type('application/xml').send('<VAST version="3.0"/>');
+  }
+
+  // Extract aid, cid, sid from the Impression URL already in the XML
+  // e.g. wtf.gif?cid=136176&aid=316139&sid=48136&zid=160781
+  let aid = '', cid = '', sid = '';
+  const impMatch = xml.match(/wtf\.gif\?([^"'\]<\s]+)/);
+  if (impMatch) {
+    const p = new URLSearchParams(impMatch[1]);
+    aid = p.get('aid') || '';
+    cid = p.get('cid') || '';
+    sid = p.get('sid') || '';
+  }
+
+  // Build our tracking URLs for each VAST event
+  const events = ['impression', 'start', 'firstQuartile', 'midpoint', 'thirdQuartile', 'complete', 'creativeView'];
+  const trackingTags = events.map(e => {
+    const url = `${base}/track?e=${e}&z=${zoneId}&aid=${aid}&cid=${cid}&sid=${sid}`;
+    return `<Tracking event="${e}"><![CDATA[${url}]]></Tracking>`;
+  }).join('');
+
+  // Also inject an Impression pixel
+  const impressionTag = `<Impression><![CDATA[${base}/track?e=impression&z=${zoneId}&aid=${aid}&cid=${cid}&sid=${sid}]]></Impression>`;
+
+  // Inject our tracking tags inside the existing <TrackingEvents> block
+  // and our impression alongside the existing <Impression>
+  xml = xml.replace(/<TrackingEvents>/, `<TrackingEvents>${trackingTags}`);
+  xml = xml.replace(/<Impression>/, `${impressionTag}<Impression>`);
+
+  res.set('Cache-Control', 'no-store');
+  res.type('application/xml').send(xml);
+});
+
+// ── VAST Event Tracker ───────────────────────────────────────────────────────
+// GET /track?e=:event&z=:zoneId&aid=:adId&cid=:campaignId&sid=:siteId
+// Called by the video player when VAST tracking events fire
+app.get('/track', async (req, res) => {
+  const { e: event, z: zone_id, aid: ad_id, cid: campaign_id, sid: site_id } = req.query;
+
+  // Respond immediately with 1x1 transparent GIF so the player doesn't wait
+  const gif = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+  res.set('Cache-Control', 'no-store');
+  res.type('image/gif').send(gif);
+
+  // Async: resolve geo + insert into BQ (fire-and-forget after response)
+  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
+          || req.socket?.remoteAddress
+          || null;
+
+  let geo = null;
+  if (ip && ip !== '127.0.0.1' && ip !== '::1') {
+    try {
+      const axios = require('axios');
+      const geoRes = await axios.get(`http://ip-api.com/json/${ip}`, {
+        params: { fields: 'country,countryCode,regionName,city,lat,lon,isp', lang: 'pt-BR' },
+        timeout: 3000,
+      });
+      if (geoRes.data.country) geo = geoRes.data;
+    } catch (_) {}
+  }
+
+  const row = {
+    event:       String(event       || ''),
+    zone_id:     String(zone_id     || ''),
+    ad_id:       String(ad_id       || ''),
+    campaign_id: String(campaign_id || ''),
+    site_id:     String(site_id     || ''),
+    ip:          ip || null,
+    country:      geo?.country     || null,
+    country_code: geo?.countryCode || null,
+    region:       geo?.regionName  || null,
+    city:         geo?.city        || null,
+    lat:          geo?.lat         ?? null,
+    lon:          geo?.lon         ?? null,
+    isp:          geo?.isp         || null,
+    ts:          new Date().toISOString(),
+  };
+
+  console.log(JSON.stringify({ event: 'vast_track', ...row }));
+
+  try {
+    await insertVastEvent(row);
+  } catch (err) {
+    console.error('BigQuery VAST insert error:', err.message);
   }
 });
 
