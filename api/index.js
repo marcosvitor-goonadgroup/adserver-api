@@ -102,20 +102,23 @@ app.get('/transactions/:id', (req, res) => proxy(req, res, { path: `/transaction
 app.get('/dict', (req, res) => proxy(req, res, { path: '/dict' }));
 
 // ── Viewability script (served as JS) ────────────────────────────────────────
-// GET /v.js?z=:zoneId — serves the tracking script for a given zone
+// GET /v.js?z=:zoneId&s=:siteId&c=:campaignId&a=:adId
 app.get('/v.js', (req, res) => {
-  const zoneId = req.query.z;
+  const zoneId      = req.query.z || '';
+  const siteId      = req.query.s || '';
+  const campaignId  = req.query.c || '';
+  const adId        = req.query.a || '';
   if (!zoneId) return res.status(400).type('application/javascript').send('/* missing ?z= */');
 
   const beaconUrl = process.env.API_BASE_URL || `${req.protocol}://${req.get('host')}`;
 
   const js = `(function(){
-var z='${zoneId}',B='${beaconUrl}/viewability',T=0.5,M=1000;
+var z='${zoneId}',s='${siteId}',c='${campaignId}',a='${adId}',B='${beaconUrl}/viewability',T=0.5,M=1000;
 if(!window.IntersectionObserver)return;
 var tm=null,st=null,fired=false;
 function send(v,p,ms){
   if(fired)return;fired=true;
-  var d=JSON.stringify({zone:z,url:location.href,referrer:document.referrer||null,user_agent:navigator.userAgent,viewed:v,visible_pct:Math.round(p*100),elapsed_ms:ms,ts:new Date().toISOString()});
+  var d=JSON.stringify({zone:z,zone_id:z,site_id:s,campaign_id:c,ad_id:a,url:location.href,referrer:document.referrer||null,user_agent:navigator.userAgent,viewed:v,visible_pct:Math.round(p*100),elapsed_ms:ms,ts:new Date().toISOString()});
   if(navigator.sendBeacon){navigator.sendBeacon(B,new Blob([d],{type:'text/plain'}));}
   else{var x=new XMLHttpRequest();x.open('POST',B,true);x.setRequestHeader('Content-Type','application/json');x.send(d);}
 }
@@ -162,12 +165,27 @@ app.get('/zones/:id/tag', async (req, res) => {
   } catch (_) {}
 
   if (type === 'normal') {
-    // Standard tag: use adserver's "normal" code but inject viewability script
     const zoneName   = zoneData?.name   || '';
     const zoneWidth  = zoneData?.width  || '';
     const zoneHeight = zoneData?.height || '';
+    const siteId     = String(zoneData?.idsite || '');
     const label = [zoneName, zoneWidth && zoneHeight ? `${zoneWidth}x${zoneHeight}` : ''].filter(Boolean).join(' / ');
-    const tag = `<!-- Goonadgroup's Ad Server${label ? ' / ' + label : ''} --><ins class="ins-zone" data-zone="${zoneId}" id="goon-zone-${zoneId}"></ins><script data-cfasync="false" async src="https://media.aso1.net/js/code.min.js"></script><script async src="${base}/v.js?z=${zoneId}"></script><!-- /Goonadgroup's Ad Server -->`;
+
+    // Fetch ads assigned to this zone to get campaign_id and ad_id
+    let campaignId = '';
+    let adId = '';
+    try {
+      const adsRes = await adserver.get('/ad', { params: { idzone: zoneId, per_page: 1 } });
+      const firstAd = Array.isArray(adsRes.data) ? adsRes.data[0] : null;
+      if (firstAd) {
+        adId       = String(firstAd.id         || '');
+        campaignId = String(firstAd.idcampaign || '');
+      }
+    } catch (_) {}
+
+    // Build v.js URL with all IDs as query params
+    const vjsParams = new URLSearchParams({ z: zoneId, s: siteId, c: campaignId, a: adId }).toString();
+    const tag = `<!-- Goonadgroup's Ad Server${label ? ' / ' + label : ''} --><ins class="ins-zone" data-zone="${zoneId}" id="goon-zone-${zoneId}"></ins><script data-cfasync="false" async src="https://media.aso1.net/js/code.min.js"></script><script async src="${base}/v.js?${vjsParams}"></script><!-- /Goonadgroup's Ad Server -->`;
     return res.type('text/plain').send(tag);
   }
 
@@ -408,7 +426,7 @@ app.get('/campaigns/:id/report', async (req, res) => {
 
 // ── Viewability ──────────────────────────────────────────────────────────────
 app.post('/viewability', async (req, res) => {
-  const { zone, url, referrer, user_agent, viewed, visible_pct, elapsed_ms, ts } = req.body || {};
+  const { zone, zone_id, site_id, campaign_id, ad_id, url, referrer, user_agent, viewed, visible_pct, elapsed_ms, ts } = req.body || {};
 
   // IP: X-Forwarded-For (Vercel/proxies) ou socket remoto
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
@@ -429,6 +447,10 @@ app.post('/viewability', async (req, res) => {
 
   const row = {
     zone:         String(zone ?? ''),
+    zone_id:      String(zone_id     || zone || ''),
+    site_id:      String(site_id     || ''),
+    campaign_id:  String(campaign_id || ''),
+    ad_id:        String(ad_id       || ''),
     url:          String(url  ?? ''),
     referrer:     referrer    || null,
     user_agent:   user_agent  || null,
