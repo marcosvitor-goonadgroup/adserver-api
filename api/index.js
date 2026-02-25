@@ -8,12 +8,22 @@ const app = express();
 // CORS — allow any origin (must come before all routes)
 app.use((req, res, next) => {
   res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.set('Access-Control-Max-Age', '86400');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
 
 app.use(express.json({ limit: '20mb' }));
+// sendBeacon envia text/plain para evitar preflight CORS — parseia como JSON
+app.use(express.text({ type: 'text/plain', limit: '20mb' }));
+app.use((req, res, next) => {
+  if (typeof req.body === 'string') {
+    try { req.body = JSON.parse(req.body); } catch (_) {}
+  }
+  next();
+});
 
 // ── Users ────────────────────────────────────────────────────────────────────
 app.get('/users', (req, res) => proxy(req, res, { path: '/user' }));
@@ -106,7 +116,7 @@ var tm=null,st=null,fired=false;
 function send(v,p,ms){
   if(fired)return;fired=true;
   var d=JSON.stringify({zone:z,url:location.href,referrer:document.referrer||null,user_agent:navigator.userAgent,viewed:v,visible_pct:Math.round(p*100),elapsed_ms:ms,ts:new Date().toISOString()});
-  if(navigator.sendBeacon){navigator.sendBeacon(B,new Blob([d],{type:'application/json'}));}
+  if(navigator.sendBeacon){navigator.sendBeacon(B,new Blob([d],{type:'text/plain'}));}
   else{var x=new XMLHttpRequest();x.open('POST',B,true);x.setRequestHeader('Content-Type','application/json');x.send(d);}
 }
 var obs=new IntersectionObserver(function(es){
