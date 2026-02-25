@@ -113,17 +113,46 @@ app.get('/v.js', (req, res) => {
 var z='${zoneId}',B='${beaconUrl}/viewability',T=0.5,M=1000;
 if(!window.IntersectionObserver)return;
 var tm=null,st=null,fired=false;
-// Lê aid-XXXXX e cid-XXXXX injetados pelo adserver nas classes do wrapper em runtime
-function readIds(el){
-  var cls=el?el.className:'',aid='',cid='';
-  var ma=cls.match(/\\baid-(\\d+)\\b/),mc=cls.match(/\\bcid-(\\d+)\\b/);
-  if(ma)aid=ma[1];if(mc)cid=mc[1];
-  return{ad_id:aid,campaign_id:cid};
+// IDs capturados de fontes diferentes (DOM classes para display, beacon do adserver para VAST/outros)
+var _aid='',_cid='',_sid='',_zid=z;
+
+// 1) Lê aid-XXXXX / cid-XXXXX / zid-XXXXX das classes do elemento (funciona para display)
+function readIdsFromEl(el){
+  var cls=el?el.className:'';
+  var ma=cls.match(/\\baid-(\\d+)\\b/),mc=cls.match(/\\bcid-(\\d+)\\b/),mz=cls.match(/\\bzid-(\\d+)\\b/);
+  if(ma)_aid=ma[1];
+  if(mc)_cid=mc[1];
+  if(mz)_zid=mz[1];
 }
+
+// 2) Intercepta sendBeacon para capturar aid/cid/sid dos beacons do adserver (funciona para VAST e display)
+if(navigator.sendBeacon){
+  var _origBeacon=navigator.sendBeacon.bind(navigator);
+  navigator.sendBeacon=function(url,data){
+    try{
+      var u=new URL(url,location.href);
+      // Beacons do adserver (trkr.aso1.net, media.aso1.net, etc.)
+      if(u.hostname.indexOf('aso1.net')!==-1||u.hostname.indexOf('adserver')!==-1){
+        var pa=u.searchParams;
+        if(pa.get('aid'))_aid=pa.get('aid');
+        if(pa.get('cid'))_cid=pa.get('cid');
+        if(pa.get('sid'))_sid=pa.get('sid');
+        if(pa.get('zid'))_zid=pa.get('zid');
+        // Alguns beacons usam idad, idcampaign, idsite, idzone
+        if(pa.get('idad'))_aid=pa.get('idad');
+        if(pa.get('idcampaign'))_cid=pa.get('idcampaign');
+        if(pa.get('idsite'))_sid=pa.get('idsite');
+        if(pa.get('idzone'))_zid=pa.get('idzone');
+      }
+    }catch(e){}
+    return _origBeacon(url,data);
+  };
+}
+
 function send(v,p,ms,el){
   if(fired)return;fired=true;
-  var ids=readIds(el);
-  var d=JSON.stringify({zone:z,zone_id:z,site_id:'',campaign_id:ids.campaign_id,ad_id:ids.ad_id,url:location.href,referrer:document.referrer||null,user_agent:navigator.userAgent,viewed:v,visible_pct:Math.round(p*100),elapsed_ms:ms,ts:new Date().toISOString()});
+  readIdsFromEl(el);
+  var d=JSON.stringify({zone:z,zone_id:_zid||z,site_id:_sid,campaign_id:_cid,ad_id:_aid,url:location.href,referrer:document.referrer||null,user_agent:navigator.userAgent,viewed:v,visible_pct:Math.round(p*100),elapsed_ms:ms,ts:new Date().toISOString()});
   if(navigator.sendBeacon){navigator.sendBeacon(B,new Blob([d],{type:'text/plain'}));}
   else{var x=new XMLHttpRequest();x.open('POST',B,true);x.setRequestHeader('Content-Type','application/json');x.send(d);}
 }
