@@ -102,39 +102,41 @@ app.get('/transactions/:id', (req, res) => proxy(req, res, { path: `/transaction
 app.get('/dict', (req, res) => proxy(req, res, { path: '/dict' }));
 
 // ── Viewability script (served as JS) ────────────────────────────────────────
-// GET /v.js?z=:zoneId&s=:siteId&c=:campaignId&a=:adId
+// GET /v.js?z=:zoneId  (ad_id e campaign_id lidos do DOM em runtime via classes do adserver)
 app.get('/v.js', (req, res) => {
-  const zoneId      = req.query.z || '';
-  const siteId      = req.query.s || '';
-  const campaignId  = req.query.c || '';
-  const adId        = req.query.a || '';
+  const zoneId = req.query.z || '';
   if (!zoneId) return res.status(400).type('application/javascript').send('/* missing ?z= */');
-
+  // s, c, a ignorados — IDs lidos do DOM em runtime
   const beaconUrl = process.env.API_BASE_URL || `${req.protocol}://${req.get('host')}`;
 
   const js = `(function(){
-var z='${zoneId}',s='${siteId}',c='${campaignId}',a='${adId}',B='${beaconUrl}/viewability',T=0.5,M=1000;
+var z='${zoneId}',B='${beaconUrl}/viewability',T=0.5,M=1000;
 if(!window.IntersectionObserver)return;
 var tm=null,st=null,fired=false;
-function send(v,p,ms){
+// Lê aid-XXXXX e cid-XXXXX injetados pelo adserver nas classes do wrapper em runtime
+function readIds(el){
+  var cls=el?el.className:'',aid='',cid='';
+  var ma=cls.match(/\\baid-(\\d+)\\b/),mc=cls.match(/\\bcid-(\\d+)\\b/);
+  if(ma)aid=ma[1];if(mc)cid=mc[1];
+  return{ad_id:aid,campaign_id:cid};
+}
+function send(v,p,ms,el){
   if(fired)return;fired=true;
-  var d=JSON.stringify({zone:z,zone_id:z,site_id:s,campaign_id:c,ad_id:a,url:location.href,referrer:document.referrer||null,user_agent:navigator.userAgent,viewed:v,visible_pct:Math.round(p*100),elapsed_ms:ms,ts:new Date().toISOString()});
+  var ids=readIds(el);
+  var d=JSON.stringify({zone:z,zone_id:z,site_id:'',campaign_id:ids.campaign_id,ad_id:ids.ad_id,url:location.href,referrer:document.referrer||null,user_agent:navigator.userAgent,viewed:v,visible_pct:Math.round(p*100),elapsed_ms:ms,ts:new Date().toISOString()});
   if(navigator.sendBeacon){navigator.sendBeacon(B,new Blob([d],{type:'text/plain'}));}
   else{var x=new XMLHttpRequest();x.open('POST',B,true);x.setRequestHeader('Content-Type','application/json');x.send(d);}
 }
 var obs=new IntersectionObserver(function(es){
-  var e=es[0];
-  if(e.isIntersecting&&e.intersectionRatio>=T){if(!tm){st=Date.now();tm=setTimeout(function(){send(true,e.intersectionRatio,Date.now()-st);},M);}}
+  var e=es[0],el=e.target;
+  if(e.isIntersecting&&e.intersectionRatio>=T){if(!tm){st=Date.now();tm=setTimeout(function(){send(true,e.intersectionRatio,Date.now()-st,el);},M);}}
   else{if(tm){clearTimeout(tm);tm=null;}}
 },{threshold:[0,T,1]});
 function findEl(){
-  // 1) div criado pelo adserver: class="... zid-{z} ..."
   var byClass=document.querySelector('.zid-'+z);
   if(byClass)return byClass;
-  // 2) ins original (antes de ser processado)
   var ins=document.querySelector('ins[data-zone="'+z+'"]');
   if(ins)return ins;
-  // 3) fallback pelo id original
   return document.getElementById('goon-zone-'+z);
 }
 var attempts=0,t=setInterval(function(){
@@ -168,24 +170,9 @@ app.get('/zones/:id/tag', async (req, res) => {
     const zoneName   = zoneData?.name   || '';
     const zoneWidth  = zoneData?.width  || '';
     const zoneHeight = zoneData?.height || '';
-    const siteId     = String(zoneData?.idsite || '');
     const label = [zoneName, zoneWidth && zoneHeight ? `${zoneWidth}x${zoneHeight}` : ''].filter(Boolean).join(' / ');
-
-    // Fetch ads assigned to this zone to get campaign_id and ad_id
-    let campaignId = '';
-    let adId = '';
-    try {
-      const adsRes = await adserver.get('/ad', { params: { idzone: zoneId, per_page: 1 } });
-      const firstAd = Array.isArray(adsRes.data) ? adsRes.data[0] : null;
-      if (firstAd) {
-        adId       = String(firstAd.id         || '');
-        campaignId = String(firstAd.idcampaign || '');
-      }
-    } catch (_) {}
-
-    // Build v.js URL with all IDs as query params
-    const vjsParams = new URLSearchParams({ z: zoneId, s: siteId, c: campaignId, a: adId }).toString();
-    const tag = `<!-- Goonadgroup's Ad Server${label ? ' / ' + label : ''} --><ins class="ins-zone" data-zone="${zoneId}" id="goon-zone-${zoneId}"></ins><script data-cfasync="false" async src="https://media.aso1.net/js/code.min.js"></script><script async src="${base}/v.js?${vjsParams}"></script><!-- /Goonadgroup's Ad Server -->`;
+    // ad_id e campaign_id são lidos do DOM em runtime pelo v.js — não precisam estar na URL
+    const tag = `<!-- Goonadgroup's Ad Server${label ? ' / ' + label : ''} --><ins class="ins-zone" data-zone="${zoneId}" id="goon-zone-${zoneId}"></ins><script data-cfasync="false" async src="https://media.aso1.net/js/code.min.js"></script><script async src="${base}/v.js?z=${zoneId}"></script><!-- /Goonadgroup's Ad Server -->`;
     return res.type('text/plain').send(tag);
   }
 
