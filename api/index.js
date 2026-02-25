@@ -13,7 +13,7 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json());
+app.use(express.json({ limit: '20mb' }));
 
 // ── Users ────────────────────────────────────────────────────────────────────
 app.get('/users', (req, res) => proxy(req, res, { path: '/user' }));
@@ -124,24 +124,36 @@ setTimeout(function(){clearInterval(t);obs.observe(el);},3000);
 });
 
 // ── Zone tag generator ────────────────────────────────────────────────────────
-// GET /zones/:id/tag — returns the compact HTML tag ready to paste
+// GET /zones/:id/tag?type=normal|iframe|amp|prebid|email
+// - type=normal (default): Standard tag with viewability tracking injected
+// - type=iframe|amp|prebid|email: raw code from adserver API as-is
 app.get('/zones/:id/tag', async (req, res) => {
   const zoneId = req.params.id;
+  const type   = req.query.type || 'normal';
   const base   = process.env.API_BASE_URL || `${req.protocol}://${req.get('host')}`;
 
-  let zoneName = '', zoneWidth = '', zoneHeight = '';
+  let zoneData = null;
   try {
     const zr = await adserver.get(`/zone/${zoneId}`);
-    zoneName   = zr.data.name   || '';
-    zoneWidth  = zr.data.width  || '';
-    zoneHeight = zr.data.height || '';
+    zoneData = zr.data;
   } catch (_) {}
 
-  const label = [zoneName, zoneWidth && zoneHeight ? `${zoneWidth}x${zoneHeight}` : ''].filter(Boolean).join(' / ');
+  if (type === 'normal') {
+    // Standard tag: use adserver's "normal" code but inject viewability script
+    const zoneName   = zoneData?.name   || '';
+    const zoneWidth  = zoneData?.width  || '';
+    const zoneHeight = zoneData?.height || '';
+    const label = [zoneName, zoneWidth && zoneHeight ? `${zoneWidth}x${zoneHeight}` : ''].filter(Boolean).join(' / ');
+    const tag = `<!-- Goonadgroup's Ad Server${label ? ' / ' + label : ''} --><ins class="ins-zone" data-zone="${zoneId}" id="goon-zone-${zoneId}"></ins><script data-cfasync="false" async src="https://media.aso1.net/js/code.min.js"></script><script async src="${base}/v.js?z=${zoneId}"></script><!-- /Goonadgroup's Ad Server -->`;
+    return res.type('text/plain').send(tag);
+  }
 
-  const tag = `<!-- Goonadgroup's Ad Server${label ? ' / ' + label : ''} --><ins class="ins-zone" data-zone="${zoneId}" id="goon-zone-${zoneId}"></ins><script data-cfasync="false" async src="https://media.aso1.net/js/code.min.js"></script><script async src="${base}/v.js?z=${zoneId}"></script><!-- /Goonadgroup's Ad Server -->`;
-
-  res.type('text/plain').send(tag);
+  // For all other types: return the raw code from the adserver API
+  const codeEntry = (zoneData?.code || []).find(c => c.id === type);
+  if (!codeEntry) {
+    return res.status(404).type('text/plain').send(`Tag type "${type}" not found for zone ${zoneId}.`);
+  }
+  res.type('text/plain').send(codeEntry.code);
 });
 
 // ── Workflow guide (4 steps) ──────────────────────────────────────────────────
