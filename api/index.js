@@ -398,8 +398,6 @@ app.get('/campaigns/:id/report', async (req, res) => {
 
 // ── Viewability ──────────────────────────────────────────────────────────────
 app.post('/viewability', async (req, res) => {
-  res.sendStatus(204); // responde imediatamente, não bloqueia o publisher
-
   const { zone, url, referrer, user_agent, viewed, visible_pct, elapsed_ms, ts } = req.body || {};
 
   // IP: X-Forwarded-For (Vercel/proxies) ou socket remoto
@@ -416,7 +414,7 @@ app.post('/viewability', async (req, res) => {
         params: { fields: 'country,countryCode,regionName,city,lat,lon,isp', lang: 'pt-BR' },
       });
       if (geoRes.data.country) geo = geoRes.data;
-    } catch (_) { /* geo opcional, não quebra o fluxo */ }
+    } catch (_) { /* geo opcional */ }
   }
 
   const row = {
@@ -445,6 +443,9 @@ app.post('/viewability', async (req, res) => {
   } catch (err) {
     console.error('BigQuery insert error:', err.message);
   }
+
+  // Responde ao final — garante que o Vercel não encerra a função antes do BQ insert
+  res.sendStatus(204);
 });
 
 // ── Health ───────────────────────────────────────────────────────────────────
