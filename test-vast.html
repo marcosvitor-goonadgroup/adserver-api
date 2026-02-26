@@ -97,7 +97,7 @@
     configurable: true,
   });
 
-  const VAST_URL = 'https://adserver-api.vercel.app/vast?z=160781';
+  const VAST_URL = 'https://adserver-api.vercel.app/vast?z=160781&url=' + encodeURIComponent(location.href);
 
   let adsLoader, adsManager, adDisplayContainer;
   const video   = document.getElementById('content-video');

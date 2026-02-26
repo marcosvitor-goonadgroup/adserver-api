@@ -468,6 +468,9 @@ app.get('/vast', async (req, res) => {
   const base = process.env.API_BASE_URL || `${req.protocol}://${req.get('host')}`;
   const adserverVastUrl = `https://srv.aso1.net/vast?z=${zoneId}`;
 
+  // page_url passed by the player/tag so we can store it in tracking events
+  const pageUrl = req.query.url ? decodeURIComponent(req.query.url) : (req.headers.referer || '');
+
   // Look up the zone's assigned ads via the adserver REST API to get aid/cid/sid
   let aid = '', cid = '', sid = '';
   try {
@@ -481,7 +484,16 @@ app.get('/vast', async (req, res) => {
     }
   } catch (_) {}
 
-  const trackUrl = (e) => `${base}/track?e=${e}&z=${zoneId}&aid=${aid}&cid=${cid}&sid=${sid}`;
+  const trackUrl = (e) => {
+    const u = new URL(`${base}/track`);
+    u.searchParams.set('e', e);
+    u.searchParams.set('z', zoneId);
+    if (aid) u.searchParams.set('aid', aid);
+    if (cid) u.searchParams.set('cid', cid);
+    if (sid) u.searchParams.set('sid', sid);
+    if (pageUrl) u.searchParams.set('url', pageUrl);
+    return u.toString();
+  };
 
   const events = ['impression', 'start', 'firstQuartile', 'midpoint', 'thirdQuartile', 'complete', 'creativeView'];
   const trackingTags = events.map(e =>
@@ -516,7 +528,7 @@ app.get('/vast', async (req, res) => {
 // GET /track?e=:event&z=:zoneId&aid=:adId&cid=:campaignId&sid=:siteId
 // Called by the video player when VAST tracking events fire
 app.get('/track', async (req, res) => {
-  const { e: event, z: zone_id, aid: ad_id, cid: campaign_id, sid: site_id } = req.query;
+  const { e: event, z: zone_id, aid: ad_id, cid: campaign_id, sid: site_id, url } = req.query;
 
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
           || req.socket?.remoteAddress
@@ -541,6 +553,7 @@ app.get('/track', async (req, res) => {
     ad_id:       String(ad_id       || ''),
     campaign_id: String(campaign_id || ''),
     site_id:     String(site_id     || ''),
+    url:         url ? decodeURIComponent(url) : null,
     ip:          ip || null,
     country:      geo?.country     || null,
     country_code: geo?.countryCode || null,
