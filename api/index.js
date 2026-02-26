@@ -6,8 +6,12 @@ const { insertViewability, insertVastEvent } = require('../src/bigquery');
 const app = express();
 
 // CORS — allow any origin (must come before all routes)
+// When credentials mode is 'include' (e.g. Google IMA SDK), wildcard '*' is not allowed.
+// Reflect the request origin back so credentialed requests work from any domain.
 app.use((req, res, next) => {
-  res.set('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin || '*';
+  res.set('Access-Control-Allow-Origin', origin);
+  res.set('Access-Control-Allow-Credentials', 'true');
   res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.set('Access-Control-Max-Age', '86400');
@@ -205,7 +209,7 @@ app.get('/zones/:id/tag', async (req, res) => {
     // VAST zones (format id 18) — return our wrapper URL (injects tracking before forwarding to adserver)
     if (formatId === 18) {
       const vastUrl = `${base}/vast?z=${zoneId}`;
-      const tag = `<!-- Goonadgroup's Ad Server${label ? ' / ' + label : ''} / VAST -->
+      const tag = `<!-- Goonadgroup's Ad Server${label ? ' / ' + label : ''} [VAST] -->
 <!-- Pass this VAST URL to your video player: -->
 ${vastUrl}
 <!-- /Goonadgroup's Ad Server -->`;
