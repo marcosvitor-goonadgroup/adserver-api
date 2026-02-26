@@ -458,60 +458,55 @@ app.get('/campaigns/:id/report', async (req, res) => {
 
 // ── VAST Wrapper ─────────────────────────────────────────────────────────────
 // GET /vast?z=:zoneId
-// 1. Fetches the real VAST XML from the adserver
-// 2. Extracts aid/cid/sid from the Impression URL already in the XML
-// 3. Injects our tracking URLs (with those IDs) and returns the modified XML to the player
+// Returns a VAST Wrapper XML. The player fetches srv.aso1.net directly (avoids
+// server-side proxy which gets blocked). We pre-fetch the zone's assigned ad IDs
+// via the adserver REST API to embed aid/cid/sid in our tracking URLs.
 app.get('/vast', async (req, res) => {
   const zoneId = req.query.z || '';
   if (!zoneId) return res.status(400).type('application/xml').send('<VAST version="3.0"/>');
 
   const base = process.env.API_BASE_URL || `${req.protocol}://${req.get('host')}`;
+  const adserverVastUrl = `https://srv.aso1.net/vast?z=${zoneId}`;
 
-  // Fetch real VAST XML from adserver, forwarding the player's User-Agent
-  let xml;
-  try {
-    const axios = require('axios');
-    const r = await axios.get(`https://srv.aso1.net/vast?z=${zoneId}`, {
-      headers: { 'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0 (compatible; VAST/1.0)' },
-      responseType: 'text',
-      timeout: 6000,
-    });
-    xml = typeof r.data === 'string' ? r.data : '';
-  } catch (err) {
-    console.error('VAST fetch error:', err.message);
-    xml = '';
-  }
-
-  // If adserver returned empty or no-fill, return empty VAST
-  if (!xml || xml.trim() === '<VAST version="3.0"></VAST>' || xml.trim() === '<VAST version="3.0"/>') {
-    console.warn('VAST no-fill for zone', zoneId);
-    return res.set('Cache-Control', 'no-store').type('application/xml').send('<VAST version="3.0"/>');
-  }
-
-  // Extract aid, cid, sid from the Impression URL in the XML
-  // e.g. wtf.gif?cid=136176&aid=316139&fid=10&sid=48136&zid=160781
+  // Look up the zone's assigned ads via the adserver REST API to get aid/cid/sid
   let aid = '', cid = '', sid = '';
-  const impMatch = xml.match(/wtf\.gif\?([^"'\]<\s]+)/);
-  if (impMatch) {
-    const p = new URLSearchParams(impMatch[1]);
-    aid = p.get('aid') || '';
-    cid = p.get('cid') || '';
-    sid = p.get('sid') || '';
-  }
+  try {
+    const zr = await adserver.get(`/zone/${zoneId}`);
+    const zone = zr.data;
+    sid = String(zone?.site?.id || '');
+    const firstAd = zone?.assigned_ads?.[0];
+    if (firstAd) {
+      aid = String(firstAd.id || '');
+      cid = String(firstAd.idcampaign || '');
+    }
+  } catch (_) {}
 
-  // Build tracking URL with all IDs embedded
   const trackUrl = (e) => `${base}/track?e=${e}&z=${zoneId}&aid=${aid}&cid=${cid}&sid=${sid}`;
 
   const events = ['impression', 'start', 'firstQuartile', 'midpoint', 'thirdQuartile', 'complete', 'creativeView'];
   const trackingTags = events.map(e =>
     `<Tracking event="${e}"><![CDATA[${trackUrl(e)}]]></Tracking>`
-  ).join('');
+  ).join('\n        ');
 
-  const impressionTag = `<Impression><![CDATA[${trackUrl('impression')}]]></Impression>`;
-
-  // Inject into existing XML — add our trackers alongside the adserver's own
-  xml = xml.replace(/<TrackingEvents>/, `<TrackingEvents>${trackingTags}`);
-  xml = xml.replace(/<Impression>/, `${impressionTag}<Impression>`);
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<VAST version="3.0">
+  <Ad id="${zoneId}">
+    <Wrapper followAdditionalWrappers="true" allowMultipleAds="true" fallbackOnNoAd="false">
+      <AdSystem>GoonAdGroup</AdSystem>
+      <VASTAdTagURI><![CDATA[${adserverVastUrl}]]></VASTAdTagURI>
+      <Impression><![CDATA[${trackUrl('impression')}]]></Impression>
+      <Creatives>
+        <Creative>
+          <Linear>
+            <TrackingEvents>
+        ${trackingTags}
+            </TrackingEvents>
+          </Linear>
+        </Creative>
+      </Creatives>
+    </Wrapper>
+  </Ad>
+</VAST>`;
 
   res.set('Cache-Control', 'no-store');
   res.type('application/xml').send(xml);
