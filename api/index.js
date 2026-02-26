@@ -110,15 +110,19 @@ app.get('/dict', (req, res) => proxy(req, res, { path: '/dict' }));
 app.get('/v.js', (req, res) => {
   const zoneId = req.query.z || '';
   if (!zoneId) return res.status(400).type('application/javascript').send('/* missing ?z= */');
-  // s, c, a ignorados — IDs lidos do DOM em runtime
+  // aid/cid/sid podem vir pré-embutidos na URL como fallback (para iframe onde beacons são isolados)
+  const preAid = req.query.aid || '';
+  const preCid = req.query.cid || '';
+  const preSid = req.query.sid || '';
   const beaconUrl = process.env.API_BASE_URL || `${req.protocol}://${req.get('host')}`;
 
   const js = `(function(){
 var z='${zoneId}',B='${beaconUrl}/viewability',T=0.5,M=1000;
 if(!window.IntersectionObserver)return;
 var tm=null,st=null,fired=false;
-// IDs capturados de fontes diferentes (DOM classes para display, beacon do adserver para VAST/outros)
-var _aid='',_cid='',_sid='',_zid=z;
+// IDs: inicializados com valores pré-embutidos na URL (fallback para iframe),
+// sobrescritos se o adserver injetar classes no DOM ou disparar beacons na página pai
+var _aid='${preAid}',_cid='${preCid}',_sid='${preSid}',_zid=z;
 
 // 1) Lê aid-XXXXX / cid-XXXXX / zid-XXXXX das classes do elemento (funciona para display)
 function readIdsFromEl(el){
@@ -180,7 +184,8 @@ var attempts=0,t=setInterval(function(){
 },200);
 })();`;
 
-  res.set('Cache-Control', 'public, max-age=3600');
+  // Cache curto — cada zona tem parâmetros diferentes (aid/cid/sid embutidos)
+  res.set('Cache-Control', 'public, max-age=300');
   res.type('application/javascript').send(js);
 });
 
@@ -199,6 +204,22 @@ app.get('/zones/:id/tag', async (req, res) => {
     zoneData = zr.data;
   } catch (_) {}
 
+  // Extract aid/cid/sid from zone data — embedded in v.js URL so IDs are always available
+  // regardless of whether the adserver beacons fire on the page (they don't for iframes)
+  const zAid = String(zoneData?.assigned_ads?.[0]?.id           || '');
+  const zCid = String(zoneData?.assigned_ads?.[0]?.idcampaign   || '');
+  const zSid = String(zoneData?.site?.id                        || '');
+
+  // Build v.js URL with IDs pre-embedded as fallback params
+  function vjsUrl(zid) {
+    const u = new URL(`${base}/v.js`);
+    u.searchParams.set('z', zid);
+    if (zAid) u.searchParams.set('aid', zAid);
+    if (zCid) u.searchParams.set('cid', zCid);
+    if (zSid) u.searchParams.set('sid', zSid);
+    return u.toString();
+  }
+
   if (type === 'normal') {
     const zoneName   = zoneData?.name   || '';
     const zoneWidth  = zoneData?.width  || '';
@@ -216,8 +237,8 @@ ${vastUrl}
       return res.type('text/plain').send(tag);
     }
 
-    // Display zones: standard ins tag with code.min.js and viewability script
-    const tag = `<!-- Goonadgroup's Ad Server${label ? ' / ' + label : ''} --><ins class="ins-zone" data-zone="${zoneId}" id="goon-zone-${zoneId}"></ins><script data-cfasync="false" async src="https://media.aso1.net/js/code.min.js"></script><script async src="${base}/v.js?z=${zoneId}"></script><!-- /Goonadgroup's Ad Server -->`;
+    // Display zones: ins tag with click macro + viewability script
+    const tag = `<!-- Goonadgroup's Ad Server${label ? ' / ' + label : ''} --><ins class="ins-zone" data-zone="${zoneId}" id="goon-zone-${zoneId}" data-redirector="%%CLICK_URL_UNESC%%"></ins><script data-cfasync="false" async src="https://media.aso1.net/js/code.min.js"></script><script async src="${vjsUrl(zoneId)}"></script><!-- /Goonadgroup's Ad Server -->`;
     return res.type('text/plain').send(tag);
   }
 
@@ -227,9 +248,14 @@ ${vastUrl}
     const zoneWidth  = zoneData?.width  || '';
     const zoneHeight = zoneData?.height || '';
     const iLabel = [zoneName, zoneWidth && zoneHeight ? `${zoneWidth}x${zoneHeight}` : ''].filter(Boolean).join(' / ');
+    // Inject click macro into the iframe src via data-redirector on the wrapper div
+    const iframeWithMacro = rawCode.replace(
+      /(<iframe\b[^>]*\bsrc=["'])([^"']+)(["'])/i,
+      (_, pre, src, quote) => `${pre}%%CLICK_URL_UNESC%%${src}${quote}`
+    );
     const tag = `<!-- Goonadgroup's Ad Server${iLabel ? ' / ' + iLabel : ''} -->
-<div id="goon-zone-${zoneId}" style="display:inline-block;">${rawCode}</div>
-<script async src="${base}/v.js?z=${zoneId}"></script>
+<div id="goon-zone-${zoneId}" style="display:inline-block;">${iframeWithMacro}</div>
+<script async src="${vjsUrl(zoneId)}"></script>
 <!-- /Goonadgroup's Ad Server -->`;
     return res.type('text/plain').send(tag);
   }

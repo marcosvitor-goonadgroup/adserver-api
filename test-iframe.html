@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Teste iframe — Zone 160768</title>
+  <style>
+    body { font-family: monospace; padding: 20px; background: #f5f5f5; margin: 0; }
+    h2 { margin-bottom: 4px; }
+    #log { background: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: 6px; min-height: 80px; white-space: pre-wrap; font-size: 13px; margin-top: 16px; max-height: 300px; overflow-y: auto; }
+    .ok   { color: #4ec9b0; }
+    .err  { color: #f44747; }
+    .info { color: #dcdcaa; }
+    .warn { color: #ce9178; }
+    #spacer { height: 150vh; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 20px; color: #aaa; font-size: 14px; }
+    #banner-area { background: #fff; border: 2px dashed #888; padding: 20px; text-align: center; min-height: 290px; }
+    #scroll-hint { background: #fffbe6; border: 1px solid #f0c040; padding: 10px 16px; border-radius: 4px; margin-bottom: 16px; font-size: 14px; }
+  </style>
+</head>
+<body>
+
+<h2>Teste iframe + Viewability — Zone 160768 (Banner 300x250)</h2>
+<div id="scroll-hint">
+  ↓ Role a página para baixo. Quando o banner ficar visível por <strong>1 segundo</strong>, nosso beacon dispara para <code>adserver-api.vercel.app/viewability</code>.
+</div>
+
+<div id="log">Aguardando eventos...</div>
+<div id="spacer">↓ continue rolando ↓</div>
+
+<div id="banner-area">
+  <p style="color:#888; margin:0 0 12px;">Banner Zone 160768 (iframe)</p>
+
+  <!-- Tag gerada por GET /zones/160768/tag?type=iframe (após deploy) -->
+  <!-- Goonadgroup's Ad Server / Banner - 300x250 / 300x250 -->
+  <div id="goon-zone-160768" style="display:inline-block;"><!-- Goonadgroup's Ad Server / Banner / 300x250 -->
+  <iframe src="%%CLICK_URL_UNESC%%https://media.aso1.net/js/ifr.html#id=160768" width="300" height="250" align="center" frameborder="0" hspace="0" vspace="0" marginheight="0" marginwidth="0" scrolling="no" style="width:300px; height:250px; overflow:hidden; border:none;"></iframe>
+  <!-- /Goonadgroup's Ad Server --></div>
+  <script async src="https://adserver-api.vercel.app/v.js?z=160768&aid=315734&cid=11&sid=32"></script>
+  <!-- /Goonadgroup's Ad Server -->
+</div>
+
+<div style="height:50vh"></div>
+
+<script>
+  const log = document.getElementById('log');
+  let firstLog = true;
+
+  function addLog(msg, cls) {
+    if (firstLog) { log.innerHTML = ''; firstLog = false; }
+    const line = document.createElement('div');
+    line.className = cls || '';
+    line.textContent = '[' + new Date().toISOString().substring(11,23) + '] ' + msg;
+    log.appendChild(line);
+    log.scrollTop = log.scrollHeight;
+    console.log(msg);
+  }
+
+  // Intercepta sendBeacon — distingue nosso beacon dos beacons do adserver
+  const _beacon = navigator.sendBeacon.bind(navigator);
+  navigator.sendBeacon = function(url, data) {
+    if (url.includes('adserver-api.vercel.app/viewability')) {
+      addLog('✓ NOSSO beacon disparado → ' + url, 'ok');
+      if (data instanceof Blob) {
+        data.text().then(t => {
+          try {
+            const obj = JSON.parse(t);
+            addLog('  zone_id=' + obj.zone_id + ' ad_id=' + obj.ad_id + ' campaign_id=' + obj.campaign_id + ' site_id=' + obj.site_id, 'ok');
+            addLog('  viewed=' + obj.viewed + ' visible_pct=' + obj.visible_pct + '% elapsed_ms=' + obj.elapsed_ms, 'ok');
+          } catch(e) {
+            addLog('  Payload: ' + t, 'info');
+          }
+        });
+      }
+    } else {
+      try {
+        const u = new URL(url);
+        const params = ['aid','cid','sid','zid','idad','idcampaign','idsite','idzone','type','event'];
+        const found = params.filter(p => u.searchParams.has(p)).map(p => p+'='+u.searchParams.get(p));
+        addLog('→ Beacon adserver [' + u.hostname + u.pathname + '] ' + (found.length ? found.join(', ') : '(nenhum)'), 'warn');
+      } catch(e) {
+        addLog('→ Beacon adserver: ' + url.substring(0, 80), 'warn');
+      }
+    }
+    return _beacon(url, data);
+  };
+
+  // Intercepta XHR — captura requests do adserver e do nosso /viewability
+  const _open = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function(method, url) {
+    if (typeof url === 'string') {
+      if (url.includes('adserver-api.vercel.app/viewability')) {
+        addLog('✓ NOSSO beacon via XHR → ' + url, 'ok');
+      } else if (url.includes('aso1.net')) {
+        try {
+          const u = new URL(url, location.href);
+          const params = ['aid','cid','sid','zid','idad','idcampaign','idsite','idzone','type','event','format'];
+          const found = params.filter(p => u.searchParams.has(p)).map(p => p+'='+u.searchParams.get(p));
+          addLog('→ XHR [' + u.hostname + u.pathname + '] ' + (found.join(', ') || '(sem params)'), 'warn');
+        } catch(e) { addLog('→ XHR: ' + url.substring(0,100), 'warn'); }
+      }
+    }
+    return _open.apply(this, arguments);
+  };
+
+  // Intercepta fetch
+  const _fetch = window.fetch;
+  window.fetch = function(input, init) {
+    const url = typeof input === 'string' ? input : (input?.url || '');
+    if (url.includes('aso1.net')) {
+      try {
+        const u = new URL(url, location.href);
+        const params = ['aid','cid','sid','zid','idad','idcampaign','idsite','idzone','type','event','format'];
+        const found = params.filter(p => u.searchParams.has(p)).map(p => p+'='+u.searchParams.get(p));
+        addLog('→ fetch [' + u.hostname + u.pathname + '] ' + (found.join(', ') || '(sem params)'), 'warn');
+      } catch(e) { addLog('→ fetch: ' + url.substring(0,100), 'warn'); }
+    }
+    return _fetch.apply(this, arguments);
+  };
+
+  addLog('Página carregada. Role para baixo para ver o banner.', 'info');
+
+  window.addEventListener('load', () => {
+    const vjs = document.querySelector('script[src*="v.js"]');
+    addLog(vjs ? 'v.js src: ' + vjs.src : 'AVISO: v.js não encontrado', vjs ? 'info' : 'err');
+
+    // Mostra os IDs pré-embutidos na URL do v.js
+    if (vjs) {
+      try {
+        const u = new URL(vjs.src);
+        const aid = u.searchParams.get('aid') || '(vazio)';
+        const cid = u.searchParams.get('cid') || '(vazio)';
+        const sid = u.searchParams.get('sid') || '(vazio)';
+        addLog('  IDs embutidos no v.js → aid=' + aid + ' cid=' + cid + ' sid=' + sid,
+               aid !== '(vazio)' ? 'ok' : 'warn');
+      } catch(e) {}
+    }
+
+    // Verifica se o container está no DOM
+    const container = document.getElementById('goon-zone-160768');
+    addLog(container ? '✓ #goon-zone-160768 encontrado no DOM' : '✗ #goon-zone-160768 NÃO encontrado', container ? 'ok' : 'err');
+
+    // Verifica se o iframe carregou
+    const iframe = container ? container.querySelector('iframe') : null;
+    addLog(iframe ? '✓ <iframe> encontrado dentro do container' : '✗ <iframe> não encontrado', iframe ? 'ok' : 'warn');
+
+    // Verifica macro de clique no src do iframe
+    if (iframe) {
+      const src = iframe.getAttribute('src') || '';
+      addLog(src.includes('%%CLICK_URL_UNESC%%')
+        ? '✓ Macro %%CLICK_URL_UNESC%% presente no src do iframe'
+        : '✗ Macro de clique NÃO encontrada no iframe',
+        src.includes('%%CLICK_URL_UNESC%%') ? 'ok' : 'warn');
+    }
+  });
+</script>
+
+</body>
+</html>
