@@ -56,14 +56,15 @@
     console.log(msg);
   }
 
-  // Intercepta fetch/XHR para logar chamadas ao nosso /track
+  // Intercepta fetch/XHR/img para logar chamadas ao nosso /track
+  // (IMA SDK usa img tags dinâmicas para disparar tracking pixels)
   const _fetch = window.fetch;
   window.fetch = function(input, init) {
     const url = typeof input === 'string' ? input : (input?.url || '');
     if (url.includes('adserver-api.vercel.app/track')) {
       try {
         const u = new URL(url);
-        addLog('✓ /track disparado: e=' + u.searchParams.get('e') + ' aid=' + u.searchParams.get('aid') + ' cid=' + u.searchParams.get('cid'), 'ok');
+        addLog('✓ /track via fetch: e=' + u.searchParams.get('e'), 'ok');
       } catch(e) {}
     }
     return _fetch.apply(this, arguments);
@@ -74,11 +75,27 @@
     if (typeof url === 'string' && url.includes('adserver-api.vercel.app/track')) {
       try {
         const u = new URL(url);
-        addLog('✓ /track via XHR: e=' + u.searchParams.get('e') + ' aid=' + u.searchParams.get('aid') + ' cid=' + u.searchParams.get('cid'), 'ok');
+        addLog('✓ /track via XHR: e=' + u.searchParams.get('e'), 'ok');
       } catch(e) {}
     }
     return _xhrOpen.apply(this, arguments);
   };
+
+  // Intercepta img src (IMA SDK dispara pixels de tracking via <img>)
+  const _imgSrcDesc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+  Object.defineProperty(HTMLImageElement.prototype, 'src', {
+    set(val) {
+      if (typeof val === 'string' && val.includes('adserver-api.vercel.app/track')) {
+        try {
+          const u = new URL(val);
+          addLog('✓ /track via img pixel: e=' + u.searchParams.get('e'), 'ok');
+        } catch(e) {}
+      }
+      _imgSrcDesc.set.call(this, val);
+    },
+    get() { return _imgSrcDesc.get.call(this); },
+    configurable: true,
+  });
 
   const VAST_URL = 'https://adserver-api.vercel.app/vast?z=160781';
 

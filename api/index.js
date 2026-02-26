@@ -505,16 +505,11 @@ app.get('/vast', (req, res) => {
 app.get('/track', async (req, res) => {
   const { e: event, z: zone_id, aid: ad_id, cid: campaign_id, sid: site_id } = req.query;
 
-  // Respond immediately with 1x1 transparent GIF so the player doesn't wait
-  const gif = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
-  res.set('Cache-Control', 'no-store');
-  res.type('image/gif').send(gif);
-
-  // Async: resolve geo + insert into BQ (fire-and-forget after response)
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
           || req.socket?.remoteAddress
           || null;
 
+  // Resolve geo
   let geo = null;
   if (ip && ip !== '127.0.0.1' && ip !== '::1') {
     try {
@@ -551,6 +546,11 @@ app.get('/track', async (req, res) => {
   } catch (err) {
     console.error('BigQuery VAST insert error:', err.message);
   }
+
+  // Respond AFTER async work — Vercel kills the function as soon as res is sent
+  const gif = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+  res.set('Cache-Control', 'no-store');
+  res.type('image/gif').send(gif);
 });
 
 // ── Viewability ──────────────────────────────────────────────────────────────
