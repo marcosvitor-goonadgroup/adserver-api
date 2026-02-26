@@ -221,6 +221,47 @@ ${vastUrl}
     return res.type('text/plain').send(tag);
   }
 
+  if (type === 'iframe') {
+    const rawCode = (zoneData?.code || []).find(c => c.id === 'iframe')?.code || '';
+    const zoneName   = zoneData?.name   || '';
+    const zoneWidth  = zoneData?.width  || '';
+    const zoneHeight = zoneData?.height || '';
+    const iLabel = [zoneName, zoneWidth && zoneHeight ? `${zoneWidth}x${zoneHeight}` : ''].filter(Boolean).join(' / ');
+    const tag = `<!-- Goonadgroup's Ad Server${iLabel ? ' / ' + iLabel : ''} -->
+<div id="goon-zone-${zoneId}" style="display:inline-block;">${rawCode}</div>
+<script async src="${base}/v.js?z=${zoneId}"></script>
+<!-- /Goonadgroup's Ad Server -->`;
+    return res.type('text/plain').send(tag);
+  }
+
+  if (type === 'amp') {
+    const rawCode = (zoneData?.code || []).find(c => c.id === 'amp')?.code || '';
+    const zoneName   = zoneData?.name   || '';
+    const zoneWidth  = zoneData?.width  || '';
+    const zoneHeight = zoneData?.height || '';
+    const aLabel = [zoneName, zoneWidth && zoneHeight ? `${zoneWidth}x${zoneHeight}` : ''].filter(Boolean).join(' / ');
+    let aid = '', cid = '', sid = '';
+    try {
+      sid = String(zoneData?.site?.id || '');
+      const firstAd = zoneData?.assigned_ads?.[0];
+      if (firstAd) {
+        aid = String(firstAd.id || '');
+        cid = String(firstAd.idcampaign || '');
+      }
+    } catch (_) {}
+    const pixelUrl = new URL(`${base}/track`);
+    pixelUrl.searchParams.set('e', 'impression');
+    pixelUrl.searchParams.set('z', zoneId);
+    if (aid) pixelUrl.searchParams.set('aid', aid);
+    if (cid) pixelUrl.searchParams.set('cid', cid);
+    if (sid) pixelUrl.searchParams.set('sid', sid);
+    const tag = `<!-- Goonadgroup's Ad Server${aLabel ? ' / ' + aLabel : ''} [AMP] -->
+${rawCode}
+<amp-pixel src="${pixelUrl.toString()}&url=CANONICAL_URL" layout="nodisplay"></amp-pixel>
+<!-- /Goonadgroup's Ad Server -->`;
+    return res.type('text/plain').send(tag);
+  }
+
   // For all other types: return the raw code from the adserver API
   const codeEntry = (zoneData?.code || []).find(c => c.id === type);
   if (!codeEntry) {
