@@ -387,32 +387,29 @@ app.get('/debug/stats', async (req, res) => {
   }
 });
 
-// ── Campaign report: Campaign → Site → Zone → Ad (by day) ────────────────────
+// ── Campaign report: Site → Zone → Ad (correct hierarchy) ───────────────────
 // GET /campaigns/:id/report?dateBegin=2026-01-01&dateEnd=2026-01-31
+//   1. group=day+site    → daily stats per site
+//   2. group=site+zone   → zone belongs to which site
+//   3. group=day+zone    → daily stats per zone
+//   4. group=zone+ad     → ads per zone with stats
+//   5. events group=ad   → video events per ad
 app.get('/campaigns/:id/report', async (req, res) => {
   const { id } = req.params;
   const { dateBegin, dateEnd } = req.query;
-
   if (!dateBegin || !dateEnd) {
     return res.status(400).json({ error: 'dateBegin and dateEnd are required' });
   }
-
-  const statsBase   = { dateBegin, dateEnd, idcampaign: id };
-  const eventsBase  = { dateBegin, dateEnd, idcampaign: id, report: 1 };
-
+  const statsBase  = { dateBegin, dateEnd, idcampaign: id };
+  const eventsBase = { dateBegin, dateEnd, idcampaign: id, report: 1 };
   try {
-    // 4 calls in parallel — each gives a different dimension breakdown
-    const [resSite, resZone, resAd, resEvents] = await Promise.all([
-      adserver.get('/stats',  { params: { ...statsBase,  group: 'day', group2: 'site' } }),
-      adserver.get('/stats',  { params: { ...statsBase,  group: 'day', group2: 'zone' } }),
-      adserver.get('/stats',  { params: { ...statsBase,  group: 'day', group2: 'ad'   } }),
-      adserver.get('/events', { params: { ...eventsBase, group: 'ad'                  } }).catch(() => ({ data: [] })),
+    const [resDaySite, resSiteZone, resDayZone, resZoneAd, resEvents] = await Promise.all([
+      adserver.get('/stats',  { params: { ...statsBase,  group: 'day',  group2: 'site' } }),
+      adserver.get('/stats',  { params: { ...statsBase,  group: 'site', group2: 'zone' } }),
+      adserver.get('/stats',  { params: { ...statsBase,  group: 'day',  group2: 'zone' } }),
+      adserver.get('/stats',  { params: { ...statsBase,  group: 'zone', group2: 'ad'   } }),
+      adserver.get('/events', { params: { ...eventsBase, group: 'ad' } }).catch(() => ({ data: [] })),
     ]);
-
-    // ── helpers ──────────────────────────────────────────────────────────────
-    // API uses iddimension_2 / dimension_2 (underscore) for the group2 field
-    const id2  = r => r.iddimension_2 ?? null;
-    const dim2 = r => r.dimension_2   ?? null;
 
     function statsRow(r) {
       return {
@@ -423,11 +420,8 @@ app.get('/campaigns/:id/report', async (req, res) => {
         clicks:             Number(r.clicks)             || 0,
         clicks_unique:      Number(r.clicks_unique)      || 0,
         conversions:        Number(r.conversions)        || 0,
-        subscriptions:      Number(r.subscriptions)      || 0,
         passback:           Number(r.passback)           || 0,
         cpm:                Number(r.cpm)                || 0,
-        cpc:                Number(r.cpc)                || 0,
-        cpa:                Number(r.cpa)                || 0,
         amount:             Number(r.amount)             || 0,
         amount_pub:         Number(r.amount_pub)         || 0,
       };
@@ -443,79 +437,100 @@ app.get('/campaigns/:id/report', async (req, res) => {
       };
     }
 
-    // ── index raw data ────────────────────────────────────────────────────────
-    const siteIdx   = {};   // "date|siteId"
-    const zoneIdx   = {};   // "date|zoneId"
-    const adIdx     = {};   // "date|adId"
-    const eventsIdx = {};   // "adId"
+    // group=zone&group2=ad: iddimension=ad_id, iddimension_2=zone_id (swapped vs normal)
+    // group=site&group2=zone: iddimension=site_id, iddimension_2=zone_id (normal)
 
-    for (const r of resSite.data)   siteIdx[`${r.dimension}|${id2(r)}`]  = r;
-    for (const r of resZone.data)   zoneIdx[`${r.dimension}|${id2(r)}`]  = r;
-    for (const r of resAd.data)     adIdx[`${r.dimension}|${id2(r)}`]    = r;
-    for (const e of resEvents.data) eventsIdx[String(e.iddimension_2 ?? e.iddimension ?? '')] = e;
+    // zone → site mapping
+    const zoneToSite = {};
+    const siteNames  = {};
+    const zoneNames  = {};
+    for (const r of resSiteZone.data) {
+      const siteId = String(r.iddimension);
+      const zoneId = String(r.iddimension_2);
+      zoneToSite[zoneId] = siteId;
+      siteNames[siteId]  = r.dimension;
+      zoneNames[zoneId]  = r.dimension_2;
+    }
 
-    // ── collect unique dates & ids ────────────────────────────────────────────
+    // events index by ad_id
+    const eventsIdx = {};
+    for (const e of resEvents.data) {
+      const adId = String(e.iddimension_2 ?? e.iddimension ?? '');
+      eventsIdx[adId] = e;
+    }
+
+    // zone → ads (from resZoneAd: iddimension_2=zone_id, iddimension=ad_id)
+    const zoneAds = {};
+    for (const r of resZoneAd.data) {
+      const zoneId = String(r.iddimension_2);
+      const adId   = String(r.iddimension);
+      if (!zoneAds[zoneId]) zoneAds[zoneId] = [];
+      zoneAds[zoneId].push({
+        ad_id:   adId,
+        ad_name: r.dimension,
+        stats:   statsRow(r),
+        video:   eventsIdx[adId] ? videoRow(eventsIdx[adId]) : null,
+      });
+    }
+
+    // daily zone stats index: key = "date|zoneId"
+    const dayZoneIdx = {};
+    for (const r of resDayZone.data) {
+      dayZoneIdx[r.dimension + '|' + r.iddimension_2] = r;
+    }
+
+    // daily site stats index: key = "date|siteId"
+    const daySiteIdx = {};
+    for (const r of resDaySite.data) {
+      daySiteIdx[r.dimension + '|' + r.iddimension_2] = r;
+    }
+
     const dates = [...new Set([
-      ...resSite.data.map(r => r.dimension),
-      ...resZone.data.map(r => r.dimension),
-      ...resAd.data.map(r  => r.dimension),
+      ...resDaySite.data.map(r => r.dimension),
+      ...resDayZone.data.map(r => r.dimension),
     ])].sort();
 
-    const siteIds = [...new Set(resSite.data.map(r => id2(r)))].filter(Boolean);
-    const zoneIds = [...new Set(resZone.data.map(r => id2(r)))].filter(Boolean);
-    const adIds   = [...new Set(resAd.data.map(r   => id2(r)))].filter(Boolean);
+    // group zones by site
+    const siteZones = {};
+    for (const [zoneId, siteId] of Object.entries(zoneToSite)) {
+      if (!siteZones[siteId]) siteZones[siteId] = [];
+      siteZones[siteId].push(zoneId);
+    }
+    const siteIds = Object.keys(siteZones);
 
-    // ── build hierarchy ───────────────────────────────────────────────────────
     const sites = siteIds.map(siteId => {
+      const zonesForSite = siteZones[siteId] || [];
+
       const days = dates.map(date => {
-        const sr = siteIdx[`${date}|${siteId}`];
+        const sr = daySiteIdx[date + '|' + siteId];
 
-        const zones = zoneIds.map(zoneId => {
-          const zr = zoneIdx[`${date}|${zoneId}`];
-
-          const ads = adIds.map(adId => {
-            const ar = adIdx[`${date}|${adId}`];
-            const ev = eventsIdx[String(adId)];
-            if (!ar) return null;
-            return {
-              ad_id:   adId,
-              ad_name: dim2(ar),
-              stats:   statsRow(ar),
-              video:   ev ? videoRow(ev) : null,
-            };
-          }).filter(Boolean);
-
-          if (!zr && ads.length === 0) return null;
+        const zones = zonesForSite.map(zoneId => {
+          const zr = dayZoneIdx[date + '|' + zoneId];
+          if (!zr) return null;
           return {
-            zone_id:   zoneId,
-            zone_name: zr ? dim2(zr) : null,
-            stats:     zr ? statsRow(zr) : null,
-            ads,
+            zone_id:   Number(zoneId),
+            zone_name: zoneNames[zoneId] || null,
+            stats:     statsRow(zr),
+            ads:       zoneAds[zoneId] || [],
           };
         }).filter(Boolean);
 
         if (!sr && zones.length === 0) return null;
         return {
           date,
-          stats:  sr ? statsRow(sr) : null,
+          stats: sr ? statsRow(sr) : null,
           zones,
         };
       }).filter(Boolean);
 
-      const siteRef = resSite.data.find(r => id2(r) === siteId);
       return {
-        site_id:   siteId,
-        site_name: siteRef ? dim2(siteRef) : null,
+        site_id:   Number(siteId),
+        site_name: siteNames[siteId] || null,
         days,
       };
     });
 
-    res.json({
-      campaign_id: Number(id),
-      dateBegin,
-      dateEnd,
-      sites,
-    });
+    res.json({ campaign_id: Number(id), dateBegin, dateEnd, sites });
 
   } catch (err) {
     if (err.response) return res.status(err.response.status).json(err.response.data);
