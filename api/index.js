@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const { proxy, adserver } = require('../src/proxy');
-const { insertViewability, insertVastEvent } = require('../src/bigquery');
+const { insertViewability, insertVastEvent, queryViewability, queryVast } = require('../src/bigquery');
 
 const app = express();
 
@@ -700,6 +700,68 @@ app.post('/viewability', async (req, res) => {
 
   // Responde ao final — garante que o Vercel não encerra a função antes do BQ insert
   res.sendStatus(204);
+});
+
+
+// ── BigQuery: Viewability read ─────────────────────────────────────────────
+// GET /campaigns/:id/viewability?dateBegin=YYYY-MM-DD&dateEnd=YYYY-MM-DD
+app.get('/campaigns/:id/viewability', async (req, res) => {
+  const { id } = req.params;
+  const { dateBegin, dateEnd } = req.query;
+  if (!dateBegin || !dateEnd) {
+    return res.status(400).json({ error: 'dateBegin and dateEnd are required' });
+  }
+  try {
+    const rows = await queryViewability({ campaignId: id, dateBegin, dateEnd });
+    res.json(rows);
+  } catch (err) {
+    console.error('BigQuery viewability query error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── BigQuery: VAST read ────────────────────────────────────────────────────
+// GET /campaigns/:id/vast?dateBegin=YYYY-MM-DD&dateEnd=YYYY-MM-DD
+app.get('/campaigns/:id/vast', async (req, res) => {
+  const { id } = req.params;
+  const { dateBegin, dateEnd } = req.query;
+  if (!dateBegin || !dateEnd) {
+    return res.status(400).json({ error: 'dateBegin and dateEnd are required' });
+  }
+  try {
+    const rows = await queryVast({ campaignId: id, dateBegin, dateEnd });
+    res.json(rows);
+  } catch (err) {
+    console.error('BigQuery VAST query error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Google Sheets proxy ────────────────────────────────────────────────────
+// GET /sheets/campaign-data
+// Fetches the control spreadsheet and returns all campaign rows.
+app.get('/sheets/campaign-data', async (req, res) => {
+  const sheetsUrl = process.env.SHEETS_URL ||
+    'https://nmbcoamazonia-api.vercel.app/google/sheets/1tGeiQ--k--y4jlR8CVdg9CjFs3YYDGHDUEOy2C5ycmY/data?Range=base';
+  try {
+    const axios = require('axios');
+    const r = await axios.get(sheetsUrl, { timeout: 10000 });
+    const values = r.data && r.data.data && r.data.data.values ? r.data.data.values : [];
+    // Row 0: title, Row 1: headers, Row 2+: data
+    const dataRows = values.slice(2);
+    const result = dataRows.map(row => ({
+      agency:     row[0] || '',
+      campaign:   row[1] || '',
+      vehicle:    row[2] || '',
+      contracted: Number(row[3]) || 0,
+      dateBegin:  row[4] || '',
+      dateEnd:    row[5] || '',
+    }));
+    res.json(result);
+  } catch (err) {
+    console.error('Sheets fetch error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── Health ───────────────────────────────────────────────────────────────────
