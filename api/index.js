@@ -765,12 +765,13 @@ app.get('/sheets/campaign-data', async (req, res) => {
     // Row 0: title, Row 1: headers, Row 2+: data
     const dataRows = values.slice(2);
     const result = dataRows.map(row => ({
-      agency:     row[0] || '',
-      campaign:   row[1] || '',
-      vehicle:    row[2] || '',
-      contracted: Number(row[3]) || 0,
-      dateBegin:  row[4] || '',
-      dateEnd:    row[5] || '',
+      agency:       row[0] || '',
+      campaign:     row[1] || '',
+      vehicle:      row[2] || '',
+      purchaseType: row[3] || '',
+      contracted:   Number(row[4]) || 0,
+      dateBegin:    row[5] || '',
+      dateEnd:      row[6] || '',
     }));
     res.json(result);
   } catch (err) {
