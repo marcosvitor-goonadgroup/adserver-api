@@ -55,7 +55,7 @@ app.get('/campaigns/:id/sites', async (req, res) => {
   try {
     const today = new Date();
     const dateEnd   = today.toISOString().slice(0, 10);
-    const dateBegin = new Date(today.getFullYear() - 2, today.getMonth(), today.getDate())
+    const dateBegin = new Date(today.getTime() - 364 * 24 * 60 * 60 * 1000)
       .toISOString().slice(0, 10);
     const r = await adserver.get('/stats', {
       params: { idcampaign: req.params.id, group: 'site', dateBegin, dateEnd },
