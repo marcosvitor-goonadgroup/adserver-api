@@ -49,6 +49,28 @@ app.get('/campaigns/:id', (req, res) => proxy(req, res, { path: `/campaign/${req
 app.put('/campaigns/:id', (req, res) => proxy(req, res, { path: `/campaign/${req.params.id}` }));
 app.delete('/campaigns/:id', (req, res) => proxy(req, res, { path: `/campaign/${req.params.id}` }));
 
+// ── Campaign sites: sites that have delivered impressions for a campaign ───────
+// GET /campaigns/:id/sites  →  [{ site_id, site_name }]
+app.get('/campaigns/:id/sites', async (req, res) => {
+  try {
+    const today = new Date();
+    const dateEnd   = today.toISOString().slice(0, 10);
+    const dateBegin = new Date(today.getFullYear() - 2, today.getMonth(), today.getDate())
+      .toISOString().slice(0, 10);
+    const r = await adserver.get('/stats', {
+      params: { idcampaign: req.params.id, group: 'site', dateBegin, dateEnd },
+    });
+    const sites = (r.data || []).map((row) => ({
+      site_id:   Number(row.iddimension),
+      site_name: row.dimension,
+    }));
+    res.json(sites);
+  } catch (err) {
+    if (err.response) return res.status(err.response.status).json(err.response.data);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Ads ──────────────────────────────────────────────────────────────────────
 // List ads for a campaign
 app.get('/campaigns/:id/ads', (req, res) =>
