@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const { proxy, adserver } = require('../src/proxy');
 const { insertViewability, insertVastEvent, queryViewability, queryVast } = require('../src/bigquery');
+const { scanCreative } = require('../src/scanner');
 
 const app = express();
 
@@ -80,7 +81,16 @@ app.get('/campaigns/:id/ads', (req, res) =>
 app.post('/ads/assign', (req, res) =>
   proxy(req, res, { path: '/ad/assign' })
 );
-app.post('/ads', (req, res) => proxy(req, res, { path: '/ad' }));
+app.post('/ads', (req, res) => {
+  const result = scanCreative(req.body?.details);
+  if (!result.safe) {
+    return res.status(422).json({
+      error: 'MALWARE_SCAN_FAILED',
+      reason: result.reason,
+    });
+  }
+  proxy(req, res, { path: '/ad' });
+});
 app.get('/ads/:id', (req, res) => proxy(req, res, { path: `/ad/${req.params.id}` }));
 app.put('/ads/:id', (req, res) => proxy(req, res, { path: `/ad/${req.params.id}` }));
 app.delete('/ads/:id', (req, res) => proxy(req, res, { path: `/ad/${req.params.id}` }));
