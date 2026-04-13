@@ -21,13 +21,13 @@
 
 <h2>Teste VAST Wrapper — Zone 160781</h2>
 <p style="color:#555; font-size:13px;">
-  VAST URL do wrapper: <code>https://adserver-api.vercel.app/vast?z=160781</code><br>
+  VAST URL do wrapper: <code>https://api-adserver.crmaddesk.com/vast?z=160781</code><br>
   Os eventos (impression, start, quartis, complete) são capturados pelo nosso servidor e inseridos no BigQuery.
 </p>
 
 <div>
   <button id="btn-play">▶ Carregar e reproduzir anúncio</button>
-  <button id="btn-raw" onclick="window.open('https://adserver-api.vercel.app/vast?z=160781','_blank')">Ver XML VAST</button>
+  <button id="btn-raw" onclick="window.open('https://api-adserver.crmaddesk.com/vast?z=160781','_blank')">Ver XML VAST</button>
 </div>
 
 <div id="player-wrap">
@@ -61,7 +61,7 @@
   const _fetch = window.fetch;
   window.fetch = function(input, init) {
     const url = typeof input === 'string' ? input : (input?.url || '');
-    if (url.includes('adserver-api.vercel.app/track')) {
+    if (url.includes('api-adserver.crmaddesk.com/track')) {
       try {
         const u = new URL(url);
         addLog('✓ /track via fetch: e=' + u.searchParams.get('e'), 'ok');
@@ -72,7 +72,7 @@
 
   const _xhrOpen = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function(method, url) {
-    if (typeof url === 'string' && url.includes('adserver-api.vercel.app/track')) {
+    if (typeof url === 'string' && url.includes('api-adserver.crmaddesk.com/track')) {
       try {
         const u = new URL(url);
         addLog('✓ /track via XHR: e=' + u.searchParams.get('e'), 'ok');
@@ -85,7 +85,7 @@
   const _imgSrcDesc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
   Object.defineProperty(HTMLImageElement.prototype, 'src', {
     set(val) {
-      if (typeof val === 'string' && val.includes('adserver-api.vercel.app/track')) {
+      if (typeof val === 'string' && val.includes('api-adserver.crmaddesk.com/track')) {
         try {
           const u = new URL(val);
           addLog('✓ /track via img pixel: e=' + u.searchParams.get('e'), 'ok');
@@ -97,7 +97,7 @@
     configurable: true,
   });
 
-  const VAST_URL = 'https://adserver-api.vercel.app/vast?z=160781&url=' + encodeURIComponent(location.href);
+  const VAST_URL = 'https://api-adserver.crmaddesk.com/vast?z=160781&url=' + encodeURIComponent(location.href);
 
   let adsLoader, adsManager, adDisplayContainer;
   const video   = document.getElementById('content-video');
