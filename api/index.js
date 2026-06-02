@@ -6,6 +6,15 @@ const { scanCreative } = require('../src/scanner');
 
 const app = express();
 
+// ── White-label serving domains (adserver.online custom property domains) ─────
+// Override via env if the platform's property domains change again.
+// NOTE: these are the ad-DELIVERY domains, separate from the REST API host
+// (api.adsrv.net) configured in src/proxy.js.
+const SERVE_HOST = process.env.ADSERVER_SERVE_HOST || 'srv.crmaddesk.com';   // Server domain (VAST/delivery)
+const CDN_HOST   = process.env.ADSERVER_CDN_HOST   || 'media.crmaddesk.com'; // CDN domain (code.min.js)
+const TRACK_HOST = process.env.ADSERVER_TRACK_HOST || 'track.crmaddesk.com'; // Tracker domain (beacons)
+const AD_HOST    = process.env.ADSERVER_AD_HOST    || 'crmaddesk.com';       // Advertising base domain
+
 // CORS — allow any origin (must come before all routes)
 // When credentials mode is 'include' (e.g. Google IMA SDK), wildcard '*' is not allowed.
 // Reflect the request origin back so credentialed requests work from any domain.
@@ -171,8 +180,9 @@ if(navigator.sendBeacon){
   navigator.sendBeacon=function(url,data){
     try{
       var u=new URL(url,location.href);
-      // Beacons do adserver (trkr.aso1.net, media.aso1.net, etc.)
-      if(u.hostname.indexOf('aso1.net')!==-1||u.hostname.indexOf('adserver')!==-1){
+      // Beacons do adserver (track.${AD_HOST}, media.${AD_HOST}, etc.)
+      // aso1.net mantido por compatibilidade com tags antigas já publicadas
+      if(u.hostname.indexOf('${AD_HOST}')!==-1||u.hostname.indexOf('aso1.net')!==-1||u.hostname.indexOf('adserver')!==-1){
         var pa=u.searchParams;
         if(pa.get('aid'))_aid=pa.get('aid');
         if(pa.get('cid'))_cid=pa.get('cid');
@@ -270,7 +280,7 @@ ${vastUrl}
     }
 
     // Display zones: ins tag with click macro + viewability script
-    const tag = `<!-- Goonadgroup's Ad Server${label ? ' / ' + label : ''} --><ins class="ins-zone" data-zone="${zoneId}" id="goon-zone-${zoneId}" data-redirector="%%CLICK_URL_UNESC%%"></ins><script data-cfasync="false" async src="https://media.aso1.net/js/code.min.js"></script><script async src="${vjsUrl(zoneId)}"></script><!-- /Goonadgroup's Ad Server -->`;
+    const tag = `<!-- Goonadgroup's Ad Server${label ? ' / ' + label : ''} --><ins class="ins-zone" data-zone="${zoneId}" id="goon-zone-${zoneId}" data-redirector="%%CLICK_URL_UNESC%%"></ins><script data-cfasync="false" async src="https://${CDN_HOST}/js/code.min.js"></script><script async src="${vjsUrl(zoneId)}"></script><!-- /Goonadgroup's Ad Server -->`;
     return res.type('text/plain').send(tag);
   }
 
@@ -572,7 +582,7 @@ app.get('/campaigns/:id/report', async (req, res) => {
 
 // ── VAST Wrapper ─────────────────────────────────────────────────────────────
 // GET /vast?z=:zoneId
-// Returns a VAST Wrapper XML. The player fetches srv.aso1.net directly (avoids
+// Returns a VAST Wrapper XML. The player fetches the SERVE_HOST directly (avoids
 // server-side proxy which gets blocked). We pre-fetch the zone's assigned ad IDs
 // via the adserver REST API to embed aid/cid/sid in our tracking URLs.
 app.get('/vast', async (req, res) => {
@@ -580,7 +590,7 @@ app.get('/vast', async (req, res) => {
   if (!zoneId) return res.status(400).type('application/xml').send('<VAST version="3.0"/>');
 
   const base = process.env.API_BASE_URL || `${req.protocol}://${req.get('host')}`;
-  const adserverVastUrl = `https://srv.aso1.net/vast?z=${zoneId}`;
+  const adserverVastUrl = `https://${SERVE_HOST}/vast?z=${zoneId}`;
 
   // page_url passed by the player/tag so we can store it in tracking events
   const pageUrl = req.query.url ? decodeURIComponent(req.query.url) : (req.headers.referer || '');

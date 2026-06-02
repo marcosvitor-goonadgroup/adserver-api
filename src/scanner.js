@@ -18,7 +18,9 @@ const MAX_HTML_BYTES     = 2.2 * 1024 * 1024; // same limit for HTML banners
 // ── Configurable VAST URL whitelist ──────────────────────────────────────────
 // Add trusted video ad domains here. Subdomains are automatically allowed.
 const VAST_DOMAIN_WHITELIST = [
-  'aso1.net',
+  'crmaddesk.com',     // white-label advertising domain
+  'srv.crmaddesk.com', // white-label server domain
+  'aso1.net',          // legacy — kept for backward compatibility
   'srv.aso1.net',
   'goonadgroup.com.br',
   'doubleclick.net',
