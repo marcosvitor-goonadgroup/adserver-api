@@ -280,7 +280,24 @@ ${vastUrl}
     }
 
     // Display zones: ins tag with click macro + viewability script
-    const tag = `<!-- Goonadgroup's Ad Server${label ? ' / ' + label : ''} --><ins class="ins-zone" data-zone="${zoneId}" id="goon-zone-${zoneId}" data-redirector="%%CLICK_URL_UNESC%%"></ins><script data-cfasync="false" async src="https://${CDN_HOST}/js/code.min.js"></script><script async src="${vjsUrl(zoneId)}"></script><!-- /Goonadgroup's Ad Server -->`;
+    // Explicit width/height so the ad slot resolves to a real dimension (not 0x0)
+    // as required for Google 3rd-party ad serving certification.
+    const sizeStyle = (zoneWidth && zoneHeight)
+      ? `display:inline-block;width:${zoneWidth}px;height:${zoneHeight}px;`
+      : 'display:inline-block;';
+
+    // 1x1 impression pixel on our own (owned) domain — resolves to a 1x1 GIF via /track.
+    const impPixel = (() => {
+      const u = new URL(`${base}/track`);
+      u.searchParams.set('e', 'impression');
+      u.searchParams.set('z', zoneId);
+      if (zAid) u.searchParams.set('aid', zAid);
+      if (zCid) u.searchParams.set('cid', zCid);
+      if (zSid) u.searchParams.set('sid', zSid);
+      return u.toString();
+    })();
+
+    const tag = `<!-- Goonadgroup's Ad Server${label ? ' / ' + label : ''} --><ins class="ins-zone" style="${sizeStyle}" data-zone="${zoneId}" id="goon-zone-${zoneId}" data-redirector="%%CLICK_URL_UNESC%%"></ins><img src="${impPixel}" width="1" height="1" style="display:none" alt="" /><script data-cfasync="false" async src="https://${CDN_HOST}/js/code.min.js"></script><script async src="${vjsUrl(zoneId)}"></script><!-- /Goonadgroup's Ad Server -->`;
     return res.type('text/plain').send(tag);
   }
 

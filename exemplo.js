@@ -1,5 +1,5 @@
 function gerarRelatorioAdSite() {
-  const token = 'h0s21wuosAk3WT-dLUBl0HxJ9g05Qw2UDdjxgyoV';
+  const token = 'PUT_YOUR_API_TOKEN_HERE';
   const diasParaTras = 366; // Define quantos dias o script deve processar
   
   const headers = { 'Authorization': 'Bearer ' + token, 'Accept': 'application/json' };
