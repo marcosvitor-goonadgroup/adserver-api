@@ -26,6 +26,7 @@ const SITES = [
     { id: 160273, name: 'Leaderboard - 728x90', fmt: 6 },
     { id: 160277, name: 'Mobile Banner - 320x50', fmt: 6 },
     { id: 160272, name: 'MREC - 300x250', fmt: 6 },
+    { id: 163445, name: 'In-Banner Video Test 300x250', fmt: 6 },
     { id: 160315, name: 'VAST', fmt: 18 },
   ]},
   { name: 'Rodovida - Site', id: 47804, zones: [

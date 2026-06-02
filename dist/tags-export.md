@@ -1,6 +1,6 @@
 # Tags de produção — Goonadgroup AdServer
 
-Geradas de `https://api-adserver.crmaddesk.com` em 2026-06-02T18:04:09.055Z
+Geradas de `https://api-adserver.crmaddesk.com` em 2026-06-02T20:44:14.360Z
 
 > Cole cada tag no site do publisher correspondente. As tags VAST devem ser passadas como URL ao player de vídeo.
 
@@ -65,6 +65,12 @@ https://api-adserver.crmaddesk.com/vast?z=160781
 
 ```html
 <!-- Goonadgroup's Ad Server / MREC - 300x250 / 300x250 --><ins class="ins-zone" style="display:inline-block;width:300px;height:250px;" data-zone="160272" id="goon-zone-160272" data-redirector="%%CLICK_URL_UNESC%%"></ins><img src="https://api-adserver.crmaddesk.com/track?e=impression&z=160272&aid=313639&cid=136176&sid=47826" width="1" height="1" style="display:none" alt="" /><script data-cfasync="false" async src="https://media.crmaddesk.com/js/code.min.js"></script><script async src="https://api-adserver.crmaddesk.com/v.js?z=160272&aid=313639&cid=136176&sid=47826"></script><!-- /Goonadgroup's Ad Server -->
+```
+
+### In-Banner Video Test 300x250 — zona 163445 _(Display)_
+
+```html
+<!-- Goonadgroup's Ad Server / In-Banner Video Test 300x250 / 300x250 --><ins class="ins-zone" style="display:inline-block;width:300px;height:250px;" data-zone="163445" id="goon-zone-163445" data-redirector="%%CLICK_URL_UNESC%%"></ins><img src="https://api-adserver.crmaddesk.com/track?e=impression&z=163445&aid=313645&cid=136176&sid=47826" width="1" height="1" style="display:none" alt="" /><script data-cfasync="false" async src="https://media.crmaddesk.com/js/code.min.js"></script><script async src="https://api-adserver.crmaddesk.com/v.js?z=163445&aid=313645&cid=136176&sid=47826"></script><!-- /Goonadgroup's Ad Server -->
 ```
 
 ### VAST — zona 160315 _(VAST)_
