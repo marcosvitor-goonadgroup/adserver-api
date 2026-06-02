@@ -202,7 +202,7 @@ if(navigator.sendBeacon){
 function send(v,p,ms,el){
   if(fired)return;fired=true;
   readIdsFromEl(el);
-  var d=JSON.stringify({zone:z,zone_id:_zid||z,site_id:_sid,campaign_id:_cid,ad_id:_aid,url:location.href,referrer:document.referrer||null,user_agent:navigator.userAgent,viewed:v,visible_pct:Math.round(p*100),elapsed_ms:ms,ts:new Date().toISOString()});
+  var d=JSON.stringify({zone:z,zone_id:_zid||z,site_id:_sid,campaign_id:_cid,ad_id:_aid,url:location.href,viewed:v,visible_pct:Math.round(p*100),elapsed_ms:ms,ts:new Date().toISOString()});
   if(navigator.sendBeacon){navigator.sendBeacon(B,new Blob([d],{type:'text/plain'}));}
   else{var x=new XMLHttpRequest();x.open('POST',B,true);x.setRequestHeader('Content-Type','application/json');x.send(d);}
 }
@@ -688,6 +688,9 @@ app.get('/track', async (req, res) => {
     } catch (_) {}
   }
 
+  // NOTE: the raw IP is used only transiently above to resolve geo and is NOT
+  // persisted — only the derived country/region/city is stored (Google 3PAS:
+  // IP is not used for anything beyond geo, and no PII is retained).
   const row = {
     event:       String(event       || ''),
     zone_id:     String(zone_id     || ''),
@@ -695,15 +698,12 @@ app.get('/track', async (req, res) => {
     campaign_id: String(campaign_id || ''),
     site_id:     String(site_id     || ''),
     url:         url ? decodeURIComponent(url) : null,
-    ip:          ip || null,
     country:      geo?.country     || null,
     country_code: geo?.countryCode || null,
     region:       geo?.regionName  || null,
     city:         geo?.city        || null,
-    lat:          geo?.lat         ?? null,
-    lon:          geo?.lon         ?? null,
     isp:          geo?.isp         || null,
-    ts:          new Date().toISOString(),
+    ts:          new Date().toISOString().slice(0, 10),
   };
 
   console.log(JSON.stringify({ event: 'vast_track', ...row }));
@@ -722,7 +722,7 @@ app.get('/track', async (req, res) => {
 
 // ── Viewability ──────────────────────────────────────────────────────────────
 app.post('/viewability', async (req, res) => {
-  const { zone, zone_id, site_id, campaign_id, ad_id, url, referrer, user_agent, viewed, visible_pct, elapsed_ms, ts } = req.body || {};
+  const { zone, zone_id, site_id, campaign_id, ad_id, url, viewed, visible_pct, elapsed_ms, ts } = req.body || {};
 
   // IP: X-Forwarded-For (Vercel/proxies) ou socket remoto
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
@@ -741,6 +741,13 @@ app.post('/viewability', async (req, res) => {
     } catch (_) { /* geo opcional */ }
   }
 
+  // NOTE: the raw IP is used only transiently above to resolve geo and is NOT
+  // persisted — only the derived country/region/city is stored (Google 3PAS:
+  // IP is not used for anything beyond geo, and no PII is retained).
+  // Data minimization: store only placement IDs, viewability metrics and coarse
+  // geo. No user-level fields (user_agent/referrer dropped) and ts is truncated
+  // to the day, so collected data carries no individual user identifiers
+  // (Google 3PAS: daily-level reporting, no PII).
   const row = {
     zone:         String(zone ?? ''),
     zone_id:      String(zone_id     || zone || ''),
@@ -748,19 +755,14 @@ app.post('/viewability', async (req, res) => {
     campaign_id:  String(campaign_id || ''),
     ad_id:        String(ad_id       || ''),
     url:          String(url  ?? ''),
-    referrer:     referrer    || null,
-    user_agent:   user_agent  || null,
     viewed:       !!viewed,
     visible_pct:  Number(visible_pct) || 0,
     elapsed_ms:   Number(elapsed_ms)  || 0,
-    ts:           ts || new Date().toISOString(),
-    ip:           ip || null,
+    ts:           String(ts || new Date().toISOString()).slice(0, 10),
     country:      geo?.country      || null,
     country_code: geo?.countryCode  || null,
     region:       geo?.regionName   || null,
     city:         geo?.city         || null,
-    lat:          geo?.lat          ?? null,
-    lon:          geo?.lon          ?? null,
     isp:          geo?.isp          || null,
   };
 
