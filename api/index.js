@@ -15,6 +15,19 @@ const CDN_HOST   = process.env.ADSERVER_CDN_HOST   || 'media.crmaddesk.com'; // 
 const TRACK_HOST = process.env.ADSERVER_TRACK_HOST || 'track.crmaddesk.com'; // Tracker domain (beacons)
 const AD_HOST    = process.env.ADSERVER_AD_HOST    || 'crmaddesk.com';       // Advertising base domain
 
+// 1x1 transparent GIF used by tracking pixels.
+const PIXEL_GIF = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+
+// User opt-out: honor Do Not Track (DNT) / Global Privacy Control (Sec-GPC)
+// signals, plus an explicit ?optout=1 / ?dnt=1 query param. When opted out we
+// record nothing (Google 3PAS: a general user opt-out for declared data collection).
+function isOptedOut(req) {
+  return req.headers['dnt'] === '1'
+      || req.headers['sec-gpc'] === '1'
+      || req.query.optout === '1'
+      || req.query.dnt === '1';
+}
+
 // CORS — allow any origin (must come before all routes)
 // When credentials mode is 'include' (e.g. Google IMA SDK), wildcard '*' is not allowed.
 // Reflect the request origin back so credentialed requests work from any domain.
@@ -671,6 +684,12 @@ app.get('/vast', async (req, res) => {
 app.get('/track', async (req, res) => {
   const { e: event, z: zone_id, aid: ad_id, cid: campaign_id, sid: site_id, url } = req.query;
 
+  // Opt-out: return the pixel but record nothing
+  if (isOptedOut(req)) {
+    res.set('Cache-Control', 'no-store');
+    return res.type('image/gif').send(PIXEL_GIF);
+  }
+
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
           || req.socket?.remoteAddress
           || null;
@@ -715,13 +734,15 @@ app.get('/track', async (req, res) => {
   }
 
   // Respond AFTER async work — Vercel kills the function as soon as res is sent
-  const gif = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
   res.set('Cache-Control', 'no-store');
-  res.type('image/gif').send(gif);
+  res.type('image/gif').send(PIXEL_GIF);
 });
 
 // ── Viewability ──────────────────────────────────────────────────────────────
 app.post('/viewability', async (req, res) => {
+  // Opt-out: acknowledge but record nothing
+  if (isOptedOut(req)) return res.sendStatus(204);
+
   const { zone, zone_id, site_id, campaign_id, ad_id, url, viewed, visible_pct, elapsed_ms, ts } = req.body || {};
 
   // IP: X-Forwarded-For (Vercel/proxies) ou socket remoto
